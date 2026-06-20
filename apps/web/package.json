@@ -1,0 +1,24 @@
+{
+  "name": "@o/web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "next start --port 3000",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "15.0.3",
+    "react": "19.0.0-rc-66855b96-20241106",
+    "react-dom": "19.0.0-rc-66855b96-20241106",
+    "@o/brand": "workspace:*",
+    "@o/types": "workspace:*",
+    "@o/i18n": "workspace:*",
+    "@o/legal": "workspace:*",
+    "@o/obs": "workspace:*",
+    "@o/ui": "workspace:*"
+  }
+}

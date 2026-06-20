@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --o-ink:    14 14 15;
+    --o-ink2:   22 22 26;
+    --o-ink3:   31 31 37;
+    --o-ink4:   42 42 51;
+    --o-cream:  232 224 208;
+    --o-cream2: 191 182 162;
+    --o-cream3: 140 132 114;
+    --o-cream4: 92 86 72;
+    --o-accent: 212 168 83;
+    --o-accent-soft: 181 141 63;
+    --o-accent-lite: 232 199 136;
+  }
+
+  * {
+    border-color: rgb(var(--o-ink3));
+  }
+
+  html, body {
+    background-color: rgb(var(--o-ink));
+    color: rgb(var(--o-cream));
+    font-family: var(--o-font-sans-var), system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background-color: rgb(var(--o-accent));
+    color: rgb(var(--o-ink));
+  }
+
+  /* No tracking pixels. No external fonts. */
+}
+
+@layer components {
+  .o-btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-sm px-5 py-2.5 text-sm font-semibold transition;
+  }
+  .o-btn-primary {
+    @apply o-btn bg-accent text-ink hover:bg-accent-soft;
+  }
+  .o-btn-ghost {
+    @apply o-btn border border-ink3 text-cream hover:border-ink4;
+  }
+  .o-btn-danger {
+    @apply o-btn border border-red-700 text-red-400 hover:bg-red-950;
+  }
+  .o-card {
+    @apply rounded-md border border-ink3 bg-ink2 p-5;
+  }
+  .o-input {
+    @apply w-full rounded-sm border border-ink3 bg-ink px-3 py-2 text-sm text-cream placeholder:text-cream3 outline-none transition focus:border-accent;
+  }
+  .o-label {
+    @apply mb-1 block text-xs uppercase tracking-wider text-cream3;
+  }
+  .o-pill {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-ink3 bg-ink2 px-2.5 py-0.5 text-xs text-cream2;
+  }
+  .o-pill-accent {
+    @apply inline-flex items-center gap-1.5 rounded-full bg-accent/10 px-2.5 py-0.5 text-xs text-accent;
+  }
+}

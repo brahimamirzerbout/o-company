@@ -1,0 +1,19 @@
+{
+  "name": "@o/app",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --port 4003",
+    "build": "next build",
+    "start": "next start --port 4003"
+  },
+  "dependencies": {
+    "next": "15.0.3",
+    "react": "19.0.0-rc-66855b96-20241106",
+    "react-dom": "19.0.0-rc-66855b96-20241106",
+    "lucide-react": "0.460.0",
+    "@o/brand": "workspace:*",
+    "@o/ui": "workspace:*"
+  }
+}

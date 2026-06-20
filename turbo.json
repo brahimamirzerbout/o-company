@@ -1,0 +1,45 @@
+// Turborepo build orchestration. Every package defines the same set of tasks
+// with the same dependency graph so we can build/test/lint in parallel.
+
+const config = {
+  $schema: "https://turbo.build/schema.json",
+  globalDependencies: ["**/.env.*local", "tsconfig.base.json"],
+  tasks: {
+    build: {
+      dependsOn: ["^build"],
+      outputs: [".next/**", "!.next/cache/**", "dist/**", "build/**"],
+      env: [
+        "DATABASE_URL",
+        "STRIPE_SECRET_KEY",
+        "STRIPE_WEBHOOK_SECRET",
+        "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "ALCHEMY_KEY",
+        "INFURA_KEY",
+        "WALLETCONNECT_PROJECT_ID",
+        "RESEND_API_KEY",
+        "JWT_SECRET",
+        "ENCRYPTION_KEY",
+      ],
+    },
+    dev: {
+      cache: false,
+      persistent: true,
+    },
+    lint: {
+      outputs: [],
+    },
+    typecheck: {
+      dependsOn: ["^build"],
+      outputs: [],
+    },
+    test: {
+      dependsOn: ["^build"],
+      outputs: ["coverage/**"],
+    },
+    clean: {
+      cache: false,
+    },
+  },
+};
+
+export default config;
