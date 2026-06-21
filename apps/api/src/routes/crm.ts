@@ -14,19 +14,12 @@ import { errors } from "@o/errors";
 import { withAuth } from "@/middleware/with-auth";
 import { requirePermission } from "@o/auth/rbac";
 import { checkRateLimit, keyFromAuth } from "@o/ratelimit";
+import { companySchema, contactSchema, dealSchema } from "./crm-schemas";
+import { checkRateLimit, keyFromAuth } from "@o/ratelimit";
 
 // =====================================================================
 // Companies
 // =====================================================================
-
-const companySchema = z.object({
-  name: z.string().min(1),
-  domain: z.string().optional(),
-  industry: z.string().optional(),
-  size: z.string().optional(),
-  logo: z.string().url().optional(),
-  address: z.string().optional(),
-});
 
 export const GET_companies = withAuth(async (ctx) => {
   requirePermission(ctx.person, "crm:read");
@@ -117,24 +110,6 @@ function buildCursor(at: Date | string, id: string): string {
 // Contacts
 // =====================================================================
 
-const contactSchema = z.object({
-  firstName: z.string().min(1),
-  lastName: z.string().min(1),
-  email: z.string().email().optional().or(z.literal("")),
-  phone: z.string().optional(),
-  companyId: z.string().uuid().optional(),
-  title: z.string().optional(),
-  status: z.enum(["lead", "active", "customer", "churned", "archived"]).default("lead"),
-  lifecycle: z.enum(["subscriber", "lead", "mql", "sql", "opportunity", "customer", "evangelist"]).default("lead"),
-  source: z.string().optional(),
-  tags: z.array(z.string()).default([]),
-  customFields: z.record(z.unknown()).default({}),
-  wallet: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
-  ensName: z.string().optional(),
-  trustScore: z.number().int().min(0).max(100).optional(),
-  lastContactedAt: z.string().optional(),
-  avatar: z.string().url().optional(),
-});
 
 export const GET_contacts = withAuth(async (ctx) => {
   requirePermission(ctx.person, "crm:read");
@@ -247,22 +222,6 @@ export const DELETE_contact = withAuth(async (ctx) => {
 // =====================================================================
 // Deals
 // =====================================================================
-
-const dealSchema = z.object({
-  name: z.string().min(1),
-  contactId: z.string().uuid(),
-  companyId: z.string().uuid().optional(),
-  amountCents: z.number().int().nonnegative(),
-  currency: z.string().default("USD"),
-  stage: z.enum(["lead", "qualified", "proposal", "negotiation", "won", "lost"]).default("lead"),
-  probability: z.number().min(0).max(1).default(0.1),
-  expectedCloseDate: z.string(), // ISO date
-  description: z.string().optional(),
-  // Win/loss reasons. Required when stage is won/lost, ignored
-  // otherwise. Free-form text; structured categories are a v2.
-  winReason: z.string().max(1000).optional(),
-  lossReason: z.string().max(1000).optional(),
-});
 
 export const GET_deals = withAuth(async (ctx) => {
   requirePermission(ctx.person, "deals:read");

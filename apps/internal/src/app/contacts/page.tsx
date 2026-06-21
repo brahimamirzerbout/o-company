@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Card, PageHeader, Avatar, Pill, Input, Button } from "@o/ui";
+import { Card, PageHeader, Avatar, Pill, Input, Button, BulkActionBar } from "@o/ui";
 import { Search, Plus, Filter } from "lucide-react";
 
 interface Contact {
@@ -29,11 +29,25 @@ const SAMPLE: Contact[] = [
 export default function ContactsPage() {
   const [q, setQ] = React.useState("");
   const [status, setStatus] = React.useState<"all" | Contact["status"]>("all");
+  const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
   const filtered = SAMPLE.filter((c) => {
     if (status !== "all" && c.status !== status) return false;
     if (!q) return true;
     return `${c.firstName} ${c.lastName} ${c.email} ${c.company}`.toLowerCase().includes(q.toLowerCase());
   });
+  const allSelected = filtered.length > 0 && filtered.every((c) => selectedIds.includes(c.id));
+  const someSelected = filtered.some((c) => selectedIds.includes(c.id)) && !allSelected;
+  function toggleAll() {
+    if (allSelected) {
+      setSelectedIds((s) => s.filter((id) => !filtered.find((c) => c.id === id)));
+    } else {
+      const newIds = filtered.map((c) => c.id);
+      setSelectedIds((s) => Array.from(new Set([...s, ...newIds])));
+    }
+  }
+  function toggleOne(id: string) {
+    setSelectedIds((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
+  }
   return (
     <>
       <PageHeader
@@ -58,6 +72,16 @@ export default function ContactsPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-ink3 bg-ink3/30 text-xs uppercase tracking-wider text-cream3">
+              <th className="px-4 py-3 text-left w-10">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  ref={(el) => { if (el) el.indeterminate = someSelected; }}
+                  onChange={toggleAll}
+                  className="h-4 w-4 rounded border-ink3 bg-ink2 accent-accent"
+                  aria-label="Select all"
+                />
+              </th>
               <th className="px-4 py-3 text-left">Person</th>
               <th className="px-4 py-3 text-left">Company</th>
               <th className="px-4 py-3 text-left">Status</th>
@@ -66,26 +90,48 @@ export default function ContactsPage() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((c) => (
-              <tr key={c.id} className="border-b border-ink3/40 last:border-0 hover:bg-ink3/30">
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <Avatar name={`${c.firstName} ${c.lastName}`} size="sm" />
-                    <div>
-                      <Link href={`/contacts/${c.id}`} className="text-cream hover:text-accent font-medium">{c.firstName} {c.lastName}</Link>
-                      <p className="text-xs text-cream3">{c.email}</p>
+            {filtered.map((c) => {
+              const isSelected = selectedIds.includes(c.id);
+              return (
+                <tr key={c.id} className={`border-b border-ink3/40 last:border-0 hover:bg-ink3/30 ${isSelected ? "bg-accent/5" : ""}`}>
+                  <td className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleOne(c.id)}
+                      className="h-4 w-4 rounded border-ink3 bg-ink2 accent-accent"
+                      aria-label={`Select ${c.firstName} ${c.lastName}`}
+                    />
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <Avatar name={`${c.firstName} ${c.lastName}`} size="sm" />
+                      <div>
+                        <Link href={`/contacts/${c.id}`} className="text-cream hover:text-accent font-medium">{c.firstName} {c.lastName}</Link>
+                        <p className="text-xs text-cream3">{c.email}</p>
+                      </div>
                     </div>
-                  </div>
-                </td>
-                <td className="px-4 py-3 text-cream2">{c.company}</td>
-                <td className="px-4 py-3"><Pill tone={c.status === "customer" ? "success" : c.status === "active" ? "info" : c.status === "lead" ? "accent" : "neutral"}>{c.status}</Pill></td>
-                <td className="px-4 py-3"><Pill tone="neutral">{c.lifecycle}</Pill></td>
-                <td className="px-4 py-3 text-cream3 text-xs">{c.lastContacted}</td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="px-4 py-3 text-cream2">{c.company}</td>
+                  <td className="px-4 py-3"><Pill tone={c.status === "customer" ? "success" : c.status === "active" ? "info" : c.status === "lead" ? "accent" : "neutral"}>{c.status}</Pill></td>
+                  <td className="px-4 py-3"><Pill tone="neutral">{c.lifecycle}</Pill></td>
+                  <td className="px-4 py-3 text-cream3 text-xs">{c.lastContacted}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </Card>
+      <BulkActionBar
+        selectedIds={selectedIds}
+        onClearSelection={() => setSelectedIds([])}
+        actions={[
+          { label: "Mark active",   endpoint: "/api/crm/contacts/bulk-update", body: { updates: { status: "active" } } },
+          { label: "Mark customer", endpoint: "/api/crm/contacts/bulk-update", body: { updates: { status: "customer" } } },
+          { label: "Mark churned",  endpoint: "/api/crm/contacts/bulk-update", body: { updates: { status: "churned" } } },
+          { label: "Delete",        endpoint: "/api/crm/contacts/bulk-delete", body: {}, tone: "danger", confirm: true, confirmMessage: `Delete ${selectedIds.length} contact(s)? This is a soft delete; you can recover from the audit log.` },
+        ]}
+      />
     </>
   );
 }
