@@ -1,0 +1,29 @@
+{
+  "name": "@o/stress",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "start": "node --import tsx src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "ratelimit": "tsx src/cli.ts ratelimit",
+    "webhook": "tsx src/cli.ts webhook",
+    "concurrent-uploads": "tsx src/cli.ts concurrent-uploads",
+    "operator-storm": "tsx src/cli.ts operator-storm",
+    "pool-exhaustion": "tsx src/cli.ts pool-exhaustion",
+    "loud-failures": "tsx src/cli.ts loud-failures",
+    "all": "tsx src/cli.ts all"
+  },
+  "dependencies": {
+    "@o/db": "workspace:*",
+    "@o/logger": "workspace:*",
+    "@o/payments": "workspace:*",
+    "@o/operator": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "4.19.2",
+    "typescript": "5.6.3"
+  }
+}

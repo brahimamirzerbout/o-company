@@ -62,6 +62,52 @@ export function withAuth<T = unknown>(
         throw errors.unauthorized("Missing bearer token");
       }
       const token = auth.slice("Bearer ".length);
+
+      // STRESS_TEST_BYPASS: in dev/staging, allow a stress-test mode
+      // where the bearer token is a known string ("stress") and a
+      // header resolves a synthetic person. NEVER enabled in production.
+      // This is how the @o/stress package exercises authed endpoints
+      // without needing real user credentials.
+      if (
+        process.env.NODE_ENV !== "production" &&
+        process.env.STRESS_TEST_BYPASS === "true" &&
+        token === "stress"
+      ) {
+        const syntheticPersonId = req.headers.get("x-stress-person") ?? "person_stress";
+        const syntheticOrgId = req.headers.get("x-stress-org") ?? "org_stress";
+        const db = getDb();
+        const [person] = await db.select().from(people).where(eq(people.id, syntheticPersonId)).limit(1);
+        const [org] = await db.select().from(orgs).where(eq(orgs.id, syntheticOrgId)).limit(1);
+        if (person && org) {
+          const body = await safeReadBody<T>(req);
+          return handler({ req, person, org, claims: { sub: person.id, org: org.id, role: person.role, email: person.email }, requestId }, { req, body });
+        }
+        // No synthetic person in DB; create one on the fly
+        // (only in non-prod). This is a dev convenience.
+        const [newPerson] = await db.insert(people).values({
+          id: syntheticPersonId,
+          orgId: syntheticOrgId,
+          email: `${syntheticPersonId}@stress.test`,
+          name: "Stress Test",
+          role: "owner",
+          status: "active",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }).onConflictDoNothing().returning();
+        const [newOrg] = await db.insert(orgs).values({
+          id: syntheticOrgId,
+          name: "Stress Test Org",
+          subdomain: `stress-${Date.now()}`,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }).onConflictDoNothing().returning();
+        const body = await safeReadBody<T>(req);
+        return handler(
+          { req, person: newPerson ?? person!, org: newOrg ?? org!, claims: { sub: syntheticPersonId, org: syntheticOrgId, role: "owner", email: "stress@test" }, requestId },
+          { req, body },
+        );
+      }
+
       const claims = await verifyAccessToken(token);
       if (!claims) throw errors.unauthorized("Invalid or expired token");
 
