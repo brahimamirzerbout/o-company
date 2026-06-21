@@ -9,7 +9,8 @@
     "start": "next start --port 4000",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "stripe:test": "tsx src/stripe-test.ts"
+    "stripe:test": "tsx src/stripe-test.ts",
+    "stripe:test:live": "tsx src/stripe-test-live.ts"
   },
   "dependencies": {
     "next": "15.0.3",

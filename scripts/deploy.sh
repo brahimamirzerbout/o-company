@@ -83,7 +83,33 @@ if [ "${SEED_ON_DEPLOY:-0}" = "1" ]; then
   pnpm --filter @o/db seed
 fi
 
-# Step 3: platform-specific deploy
+# Step 3: Live-mode Stripe smoke test (only if a live key is configured)
+# This is a pre-flight check. It charges $0.01, refunds it, and exits
+# non-zero if anything is wrong with the live Stripe account.
+# This is the script that prevents "I deployed with a working key but
+# my account is locked" from being a Friday surprise.
+if [[ "${STRIPE_SECRET_KEY:-}" == sk_live_* || "${STRIPE_SECRET_KEY:-}" == rk_live_* ]]; then
+  echo ""
+  echo "→ Live-mode Stripe smoke test (charges \$0.01, refunds it)…"
+  if ! pnpm --filter @o/api stripe:test:live; then
+    echo ""
+    echo "❌ Live-mode Stripe test failed."
+    echo "   Aborting deploy. Do not ship until this passes."
+    echo "   The key works (the boot guard didn't crash), but the"
+    echo "   account is misconfigured. Check your Stripe dashboard."
+    exit 1
+  fi
+elif [[ "${STRIPE_SECRET_KEY:-}" == sk_test_* || "${STRIPE_SECRET_KEY:-}" == rk_test_* ]]; then
+  echo ""
+  echo "→ Test-mode Stripe smoke test…"
+  pnpm --filter @o/api stripe:test
+else
+  echo ""
+  echo "⚠️  No STRIPE_SECRET_KEY detected. Skipping Stripe pre-flight."
+  echo "   Payment endpoints will return 500 until this is set."
+fi
+
+# Step 4: platform-specific deploy
 case "$PLATFORM" in
   vercel)
     echo ""
@@ -140,6 +166,7 @@ echo ""
 echo "Next steps:"
 echo "  1. Hit /api/health on the deployed URL — should return {status: 'ok'}"
 echo "  2. Set up your custom domain (o.company → Vercel)"
-echo "  3. Configure Stripe webhook endpoint"
+echo "  3. Configure Stripe webhook endpoint (set STRIPE_WEBHOOK_ID to"
+echo "     enable the live-mode smoke test's webhook check)"
 echo "  4. Send yourself a test photo upload"
 echo ""
