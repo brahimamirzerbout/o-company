@@ -138,7 +138,7 @@ export function PhotoGallery() {
       };
       setJobs((prev) => [newJob, ...prev]);
 
-      // Simulate completion in 5 seconds
+      // Simulate completion in 5 seconds, then fire a brief inbox event
       setTimeout(() => {
         setJobs((prev) => prev.map((j) => j.id === newJob.id ? {
           ...j,
@@ -147,6 +147,10 @@ export function PhotoGallery() {
           variations: MOCK_JOBS[0].variations,
         } : j));
         setExpanded((prev) => ({ ...prev, [newJob.id]: true }));
+        // Notify the brief inbox
+        window.dispatchEvent(new CustomEvent("o:brief-photo-ready-dev", {
+          detail: { jobId: newJob.id, filename: newJob.filename, variationCount: 2, totalCostUsd: 0.12 },
+        }));
       }, 5000);
     };
     window.addEventListener("o:photos-submitted-dev", onSubmit as EventListener);

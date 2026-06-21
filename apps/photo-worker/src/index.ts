@@ -9,6 +9,7 @@
 
 import { registerAllModels, getModel, PhotoVariation, PhotoVariationKind, PhotoJob, PRESETS, getPreset } from "@o/photo";
 import { cropImage, probeImage } from "@o/photo/image-ops";
+import { onPhotoJobReady } from "@o/operator/brief";
 
 // Register all model adapters on first import
 registerAllModels();
@@ -113,6 +114,17 @@ async function processJob(env: Env, msg: QueueMessage) {
 
   // 4) Report final state
   await reportStatus(env, msg.jobId, status, { variations, totalCostUsd: totalCost });
+
+  // 5) If successful (or partial), fire the brief inbox entry so the
+  //    client portal shows "your photos are ready" without polling
+  if (status === "ready") {
+    try {
+      await onPhotoJobReady(msg.orgId, msg.jobId);
+    } catch (err) {
+      console.error("onPhotoJobReady failed", err);
+      // Non-fatal — the status update is the source of truth
+    }
+  }
 
   console.log(
     `[photo] job=${msg.jobId} done in ${Date.now() - t0}ms ` +

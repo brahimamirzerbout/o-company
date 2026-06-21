@@ -7,6 +7,7 @@ import { Logo, Wordmark, Avatar, Card } from "@o/ui";
 
 const NAV = [
   { href: "/",          label: "Overview" },
+  { href: "/inbox",     label: "Brief" },
   { href: "/projects",  label: "Projects" },
   { href: "/photos",    label: "Photos" },
   { href: "/invoices",  label: "Invoices" },

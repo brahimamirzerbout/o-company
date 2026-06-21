@@ -701,3 +701,78 @@ export const operatorFeedback = pgTable("operator_feedback", {
   kindIdx:     index("operator_feedback_kind_idx").on(t.kind),
   decidedIdx:  index("operator_feedback_decided_idx").on(t.decidedAt),
 }));
+
+// =============================================================================
+// Brief inbox
+// =============================================================================
+// One row per (client-visible event). The feed in the client portal reads
+// from this table. Entries are pre-computed by the operator's
+// client_brief_summary action and cached here. The portal never has to call
+// the LLM at request time — it just reads and renders.
+
+export const briefEntryKindEnum = pgEnum("brief_entry_kind", [
+  "photo_ready",          // photo job finished
+  "invoice_sent",         // new invoice sent to the client
+  "invoice_paid",         // client paid an invoice
+  "invoice_overdue",      // invoice went past due
+  "milestone_complete",   // a project milestone was marked done
+  "milestone_started",    // a milestone began
+  "file_shared",          // a file was uploaded to the client's portal
+  "time_logged",          // time was logged on a project
+  "message_received",     // a ticket / message was received from the client
+  "project_started",      // a new project kicked off
+  "project_completed",    // a project was marked complete
+  "lead_update",          // (for prospects) lead was scored / routed
+  "system",               // catch-all for misc updates
+]);
+
+export const briefEntryPriorityEnum = pgEnum("brief_entry_priority", [
+  "low", "normal", "high", "urgent",
+]);
+
+export const briefEntries = pgTable("brief_entries", {
+  id:            text("id").primaryKey(),                   // brf_<uuid>
+  orgId:         uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+
+  // Who is this about (the client / contact)
+  contactId:     uuid("contact_id").notNull().references(() => contacts.id, { onDelete: "cascade" }),
+
+  // What kind of event
+  kind:          briefEntryKindEnum("kind").notNull(),
+  priority:      briefEntryPriorityEnum("priority").notNull().default("normal"),
+
+  // What the entry is about (polymorphic)
+  subjectType:   text("subject_type").notNull(),            // "photo_job" | "invoice" | "project" | ...
+  subjectId:     text("subject_id").notNull(),
+
+  // The brief's content
+  title:         text("title").notNull(),                   // "Photos ready: headshot-04.jpg"
+  summary:       text("summary").notNull(),                 // 2-sentence AI summary, plain English
+  actionLabel:   text("action_label"),                      // "View photos" | "Pay invoice" | "Approve"
+  actionHref:    text("action_href"),                       // "/photos" | "/invoices/INV-2026-018" | ...
+
+  // For grouping: a date stamp the client can scan ("Yesterday", "Mon, Jun 17")
+  dayBucket:     text("day_bucket").notNull(),              // "2026-06-20"
+
+  // Group identifier: entries with the same groupId render in a single card
+  // (e.g. "1 photo job with 8 variations" is 1 card, not 8)
+  groupId:       text("group_id"),
+
+  // Read tracking
+  readAt:        timestamp("read_at", { withTimezone: true }),
+  archivedAt:    timestamp("archived_at", { withTimezone: true }),
+
+  createdAt:     timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  orgIdx:        index("brief_entries_org_idx").on(t.orgId),
+  contactIdx:    index("brief_entries_contact_idx").on(t.contactId),
+  createdIdx:    index("brief_entries_created_idx").on(t.createdAt),
+  dayBucketIdx:  index("brief_entries_day_bucket_idx").on(t.dayBucket),
+  // The feed query: WHERE contactId = ? AND archivedAt IS NULL ORDER BY createdAt DESC
+  feedIdx:       index("brief_entries_feed_idx").on(t.contactId, t.archivedAt, t.createdAt),
+}));
+
+export const briefEntryRelations = relations(briefEntries, ({ one }) => ({
+  org: one(orgs, { fields: [briefEntries.orgId], references: [orgs.id] }),
+  contact: one(contacts, { fields: [briefEntries.contactId], references: [contacts.id] }),
+}));
