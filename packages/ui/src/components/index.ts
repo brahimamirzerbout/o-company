@@ -10,4 +10,5 @@ export * from "./dialog";
 export * from "./page-header";
 export * from "./stat";
 export * from "./wallet-button";
+export * from "./multi-step-lead-form";
 export { cn } from "./cn";

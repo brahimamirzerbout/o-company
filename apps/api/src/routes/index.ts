@@ -19,3 +19,4 @@ export { POST_checkout } from "./checkout";
 export { POST_refund, POST_portal } from "./payments";
 export { DELETE_gdpr, GET_export } from "./gdpr";
 export { GET_audit_log, GET_audit_event } from "./audit";
+export { POST_lead_form_submit } from "./lead-forms";

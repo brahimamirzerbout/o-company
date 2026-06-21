@@ -715,3 +715,21 @@ ALTER TYPE operator_draft_kind ADD VALUE IF NOT EXISTS 'project_kickoff';
 ALTER TYPE operator_draft_kind ADD VALUE IF NOT EXISTS 'ticket_acknowledgement';
 ALTER TYPE operator_draft_kind ADD VALUE IF NOT EXISTS 'project_closeout';
 ALTER TYPE operator_draft_kind ADD VALUE IF NOT EXISTS 'weekly_client_digest';
+
+-- === NAME: 006_lead_forms ===
+
+-- The lead forms service: when a public form on a customer's
+-- landing page submits, we record the submission here with the
+-- formId as the dedup key. The contact row is the source of truth;
+-- this table is the submission log.
+CREATE TABLE lead_form_submissions (
+  id              TEXT PRIMARY KEY,                                  -- lfs_<uuid>
+  org_id          UUID NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+  form_id         TEXT NOT NULL,                                    -- client-generated
+  contact_id      UUID NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+  payload         JSONB NOT NULL,
+  received_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(org_id, form_id)                                            -- dedup key
+);
+CREATE INDEX lead_form_submissions_org_idx ON lead_form_submissions(org_id, received_at DESC);
+CREATE INDEX lead_form_submissions_contact_idx ON lead_form_submissions(contact_id);
