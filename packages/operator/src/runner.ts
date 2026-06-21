@@ -23,6 +23,8 @@ import { listActions, getAction, ActionKind, Draft } from "./index";
 import {
   runMorningBriefing, runDealFollowup, runLeadScore,
   runInvoiceReminder, runPhotoProgressPing,
+  runLeadReengagement, runProjectKickoff, runTicketAcknowledgement,
+  runProjectCloseout, runWeeklyClientDigest,
 } from "./actions";
 import { saveDraft, sendApprovedDrafts } from "./drafts";
 import { getDb } from "@o/db/client";
@@ -111,6 +113,36 @@ async function maybeRunActionForOrg(kind: ActionKind, orgId: string, orgName: st
       .limit(1);
     if (recent.length > 0) return 0;
 
+    // Special case: weekly_client_digest is org-scoped but actually
+    // produces one draft per active client. Iterate the clients.
+    if (kind === "weekly_client_digest") {
+      const clients = await resolveEntitiesForAction("weekly_client_digest", orgId);
+      const owner = await getOrgOwner(orgId);
+      if (!owner) return 0;
+      let created = 0;
+      for (const clientId of clients) {
+        // Per-client cooldown: don't send the same client a digest twice
+        // in the same week
+        const recentForClient = await db.select({ id: operatorDrafts.id })
+          .from(operatorDrafts)
+          .where(and(
+            eq(operatorDrafts.orgId, orgId),
+            eq(operatorDrafts.kind, "weekly_client_digest"),
+            eq(operatorDrafts.subjectId, clientId),
+            sql`${operatorDrafts.createdAt} > ${cooldownCutoff}`,
+          ))
+          .limit(1);
+        if (recentForClient.length > 0) continue;
+
+        const draft = await runWeeklyClientDigest(orgId, clientId);
+        if (draft) {
+          await saveDraft({ ...draft, assigneeId: owner.id, approverId: owner.id });
+          created++;
+        }
+      }
+      return created;
+    }
+
     // Run it
     const draft = await runOrgScopedAction(kind, orgId, orgName);
     if (draft) {
@@ -176,6 +208,12 @@ async function runOrgScopedAction(kind: ActionKind, orgId: string, orgName: stri
       recipientName: owner?.name?.split(" ")[0] ?? "there",
     });
   }
+  if (kind === "weekly_client_digest") {
+    // The dispatch above calls this once per active client. The org-scoped
+    // version is the entry point — it iterates the active clients and
+    // creates one draft per client.
+    return null;  // The actual iteration happens in the calling code
+  }
   return null;
 }
 
@@ -196,6 +234,21 @@ async function runEntityScopedAction(kind: ActionKind, orgId: string, entityId: 
     }
     case "photo_progress_ping": {
       return await runPhotoProgressPing(orgId, entityId);
+    }
+    case "lead_reengagement": {
+      return await runLeadReengagement(orgId, entityId);
+    }
+    case "project_kickoff": {
+      return await runProjectKickoff(orgId, entityId);
+    }
+    case "ticket_acknowledgement": {
+      return await runTicketAcknowledgement(orgId, entityId);
+    }
+    case "project_closeout": {
+      return await runProjectCloseout(orgId, entityId);
+    }
+    case "weekly_client_digest": {
+      return await runWeeklyClientDigest(orgId, entityId);
     }
   }
   return null;
@@ -254,6 +307,34 @@ async function resolveEntitiesForAction(kind: ActionKind, orgId: string): Promis
         .limit(20);
       return rows.map((r) => r.id);
     }
+    case "lead_reengagement": {
+      // Contacts that are still leads (not customers), haven't been
+      // contacted in 30+ days
+      const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const rows = await db.select({ id: contacts.id }).from(contacts)
+        .where(and(
+          eq(contacts.orgId, orgId),
+          eq(contacts.status, "lead"),
+          sql`${contacts.lastContactedAt} < ${cutoff}`,
+        ))
+        .limit(50);
+      return rows.map((r) => r.id);
+    }
+    case "weekly_client_digest": {
+      // One entry per active client (a contact with status='customer' or
+      // a contact that owns at least one active project)
+      const rows = await db.select({ id: contacts.id }).from(contacts)
+        .where(and(
+          eq(contacts.orgId, orgId),
+          sql`${contacts.id} IN (
+            SELECT client_id FROM projects WHERE status = 'active' AND deleted_at IS NULL
+            UNION
+            SELECT id FROM contacts WHERE status = 'customer' AND deleted_at IS NULL
+          )`,
+        ))
+        .limit(50);
+      return rows.map((r) => r.id);
+    }
   }
   return [];
 }
@@ -283,6 +364,38 @@ export async function triggerEvent(event: string, payload: { orgId: string; enti
       if (draft) {
         const saved = await saveDraft({ ...draft, assigneeId: owner.id, approverId: owner.id });
         return saved;
+      }
+      return null;
+    }
+    case "project.activated": {
+      const draft = await runProjectKickoff(payload.orgId, payload.entityId);
+      if (draft) {
+        const saved = await saveDraft({ ...draft, assigneeId: owner.id, approverId: owner.id });
+        return saved;
+      }
+      return null;
+    }
+    case "project.delivered": {
+      const draft = await runProjectCloseout(payload.orgId, payload.entityId);
+      if (draft) {
+        const saved = await saveDraft({ ...draft, assigneeId: owner.id, approverId: owner.id });
+        return saved;
+      }
+      return null;
+    }
+    case "ticket.created": {
+      const draft = await runTicketAcknowledgement(payload.orgId, payload.entityId);
+      if (draft) {
+        // Auto-approve ticket acks — they're status notifications
+        const saved = await saveDraft({ ...draft, assigneeId: owner.id, approverId: owner.id });
+        // Immediately transition to 'sent' since there's no approval needed
+        await db.update(operatorDrafts).set({
+          status: "approved",
+          approvedAt: new Date().toISOString(),
+          approvedBy: owner.id,
+          updatedAt: new Date().toISOString(),
+        }).where(eq(operatorDrafts.id, saved.id));
+        return { ...saved, status: "approved" as const, approvedAt: new Date().toISOString(), approvedBy: owner.id };
       }
       return null;
     }

@@ -443,3 +443,411 @@ function draftFromStructuredResult(input: DraftInput): Omit<Draft, "assigneeId" 
     expiresAt: new Date(Date.now() + def.defaultExpiryDays * 24 * 60 * 60 * 1000).toISOString(),
   };
 }
+
+// =============================================================================
+// 6. lead_reengagement
+// =============================================================================
+// Fires when a lead has gone 30+ days without activity. The operator
+// drafts a "checking back in" message. Not automatic — the human
+// reviews and sends. Tone: warm, not salesy.
+
+const leadReengagementDef: ActionDefinition = {
+  kind: "lead_reengagement",
+  label: "Lead re-engagement",
+  description: "Drafts a check-in for a lead who has gone 30+ days without activity.",
+  channel: "email",
+  triggers: [{ kind: "interval", minutes: 60 * 24 }],  // check daily
+  requiresApproval: true,
+  scope: "per_entity",
+  cooldownMinutes: 60 * 24 * 14,  // max once per 14 days per lead
+  defaultExpiryDays: 14,
+};
+registerAction(leadReengagementDef);
+
+const LeadReengagementSchema = z.object({
+  subject: z.string(),
+  body: z.string().describe("Markdown body. 60-100 words. Warm, not salesy. Reference the original context if known."),
+  reasoning: z.string().describe("Why this is worth checking back in now."),
+});
+
+export async function runLeadReengagement(orgId: string, contactId: string) {
+  const db = (await import("@o/db/client")).getDb();
+  const { contacts, activities } = await import("@o/db/schema");
+  const { eq, and, desc } = await import("drizzle-orm");
+
+  const [contact] = await db.select().from(contacts)
+    .where(and(eq(contacts.id, contactId), eq(contacts.orgId, orgId)))
+    .limit(1);
+  if (!contact) throw new Error(`Contact ${contactId} not found`);
+  if (contact.status === "customer") throw new Error("Lead is already a customer, skipping re-engagement");
+
+  const recent = await db.select().from(activities)
+    .where(eq(activities.contactId, contactId))
+    .orderBy(desc(activities.createdAt))
+    .limit(5);
+
+  const daysSinceActivity = contact.lastContactedAt
+    ? Math.floor((Date.now() - new Date(contact.lastContactedAt).getTime()) / 86400000)
+    : 90;  // never contacted = assume 90 days
+
+  const system = `You draft a check-in email for a creative operations company. The lead is a prospect who went cold. Your job is to write a short, warm, non-salesy message that gives them a reason to respond. Never use "just checking in." Never use "circle back." Never start with "I hope this email finds you well." Be specific. Reference the original context if you have it. End with a single low-friction question.`;
+
+  const user = `Draft a check-in for:
+
+Contact: ${contact.firstName} ${contact.lastName}
+Title: ${contact.title ?? "unknown"}
+Days since last activity: ${daysSinceActivity}
+
+Recent activity on this contact:
+${JSON.stringify(recent.slice(0, 3), null, 2)}
+
+Notes from when they first reached out:
+${contact.notes ?? "(no notes)"}
+
+Return JSON with subject, body (60-100 words, markdown), and reasoning.`;
+
+  const result = await callStructured({
+    model: pickModel("draft"),
+    system, user,
+    schema: LeadReengagementSchema,
+    schemaName: "LeadReengagement",
+  });
+
+  return draftFromStructuredResult({
+    orgId, kind: "lead_reengagement", subjectType: "contact", subjectId: contactId,
+    title: `Re-engage: ${contact.firstName} ${contact.lastName}`,
+    reasoning: result.value.reasoning,
+    structured: result.value,
+    model: result.model,
+    promptTokens: result.promptTokens, completionTokens: result.completionTokens, costUsd: result.costUsd,
+  });
+}
+
+// =============================================================================
+// 7. project_kickoff
+// =============================================================================
+// Fires when a project moves to status='active'. The operator drafts a
+// kickoff message: timeline, who-does-what, what-to-expect-first.
+
+const projectKickoffDef: ActionDefinition = {
+  kind: "project_kickoff",
+  label: "Project kickoff",
+  description: "Drafts a kickoff message when a project moves to active.",
+  channel: "email",
+  triggers: [{ kind: "on_event", event: "project.activated" }],
+  requiresApproval: true,
+  scope: "per_entity",
+  cooldownMinutes: 0,  // once per project activation
+  defaultExpiryDays: 14,
+};
+registerAction(projectKickoffDef);
+
+const ProjectKickoffSchema = z.object({
+  subject: z.string(),
+  body: z.string().describe("Markdown body. 150-250 words. Includes: timeline summary, who-does-what, what-to-expect-first-week."),
+  reasoning: z.string(),
+});
+
+export async function runProjectKickoff(orgId: string, projectId: string) {
+  const db = (await import("@o/db/client")).getDb();
+  const { projects, contacts, milestones, timeEntries, people } = await import("@o/db/schema");
+  const { eq, and, asc } = await import("drizzle-orm");
+
+  const [project] = await db.select().from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.orgId, orgId)))
+    .limit(1);
+  if (!project) throw new Error(`Project ${projectId} not found`);
+
+  const [client] = project.clientId
+    ? await db.select().from(contacts).where(eq(contacts.id, project.clientId)).limit(1)
+    : [null];
+
+  const projectMilestones = await db.select().from(milestones)
+    .where(eq(milestones.projectId, projectId))
+    .orderBy(asc(milestones.dueDate));
+
+  const recentTime = await db.select().from(timeEntries)
+    .where(eq(timeEntries.projectId, projectId))
+    .limit(5);
+
+  const system = `You draft a kickoff message for a creative operations company. The message is sent to the client when their project starts. It's warm, specific, and short. It says: here's what we're doing, here's when, here's who-does-what, here's what to expect in the first week. Never use exclamation marks. Never over-promise. If milestones are sparse, say so honestly.`;
+
+  const user = `Draft a project kickoff for:
+
+Project: ${project.name}
+Service: ${project.service}
+Value: ${project.value} ${project.currency}
+Start date: ${project.startDate ?? "today"}
+Due date: ${project.dueDate ?? "TBD"}
+
+Client: ${client ? `${client.firstName} ${client.lastName} (${client.email})` : "unknown"}
+
+Milestones (in order):
+${JSON.stringify(projectMilestones, null, 2)}
+
+Recent time logged:
+${JSON.stringify(recentTime, null, 2)}
+
+Return JSON with subject, body (150-250 words, markdown), and reasoning.`;
+
+  const result = await callStructured({
+    model: pickModel("summary"),
+    system, user,
+    schema: ProjectKickoffSchema,
+    schemaName: "ProjectKickoff",
+  });
+
+  return draftFromStructuredResult({
+    orgId, kind: "project_kickoff", subjectType: "project", subjectId: projectId,
+    title: `Kickoff: ${project.name}`,
+    reasoning: result.value.reasoning,
+    structured: result.value,
+    model: result.model,
+    promptTokens: result.promptTokens, completionTokens: result.completionTokens, costUsd: result.costUsd,
+  });
+}
+
+// =============================================================================
+// 8. ticket_acknowledgement
+// =============================================================================
+// Fires on a new ticket. The operator drafts an in-app notification
+// to the client: "we got your ticket, here's when to expect a response."
+// Auto-approved (low risk, no external side effect).
+
+const ticketAckDef: ActionDefinition = {
+  kind: "ticket_acknowledgement",
+  label: "Ticket acknowledgement",
+  description: "Notifies the client that we got their ticket and when to expect a response.",
+  channel: "in_app",
+  triggers: [{ kind: "on_event", event: "ticket.created" }],
+  requiresApproval: false,  // auto-approved; it's a status notification
+  scope: "per_entity",
+  cooldownMinutes: 0,  // once per ticket
+  defaultExpiryDays: 7,
+};
+registerAction(ticketAckDef);
+
+export async function runTicketAcknowledgement(orgId: string, ticketId: string) {
+  const db = (await import("@o/db/client")).getDb();
+  const { tickets } = await import("@o/db/schema");
+  const { eq, and } = await import("drizzle-orm");
+
+  const [ticket] = await db.select().from(tickets)
+    .where(and(eq(tickets.id, ticketId), eq(tickets.orgId, orgId)))
+    .limit(1);
+  if (!ticket) throw new Error(`Ticket ${ticketId} not found`);
+
+  // No LLM call for this one — it's a structured notification.
+  const expectedResponseHours = ticket.priority === "urgent" ? 2
+    : ticket.priority === "high" ? 8
+    : ticket.priority === "normal" ? 24
+    : 72;
+
+  const body = `We got your ticket "${ticket.subject}" and we're on it.
+
+Expected first response: within ${expectedResponseHours} hours.
+
+You'll get a notification here when we reply. If it's urgent, mark it so and we'll prioritize.`;
+
+  return draftFromStructuredResult({
+    orgId, kind: "ticket_acknowledgement", subjectType: "ticket", subjectId: ticketId,
+    title: `Ticket received: ${ticket.subject}`,
+    reasoning: `New ${ticket.priority}-priority ticket from a client. Auto-acknowledged.`,
+    structured: { subject: `Ticket received: ${ticket.subject}`, body },
+    model: "gpt-4o-mini",  // not actually called
+    promptTokens: 0, completionTokens: 0, costUsd: 0,
+  });
+}
+
+// =============================================================================
+// 9. project_closeout
+// =============================================================================
+// Fires when a project moves to status='delivered'. The operator
+// drafts a closeout summary: what was delivered, what's left, the
+// final invoice nudge.
+
+const projectCloseoutDef: ActionDefinition = {
+  kind: "project_closeout",
+  label: "Project closeout",
+  description: "Drafts a closeout summary when a project is delivered.",
+  channel: "email",
+  triggers: [{ kind: "on_event", event: "project.delivered" }],
+  requiresApproval: true,
+  scope: "per_entity",
+  cooldownMinutes: 0,
+  defaultExpiryDays: 14,
+};
+registerAction(projectCloseoutDef);
+
+const ProjectCloseoutSchema = z.object({
+  subject: z.string(),
+  body: z.string().describe("Markdown body. 150-300 words. Includes: what was delivered, what's outstanding, the final invoice status, and a thank-you."),
+  reasoning: z.string(),
+});
+
+export async function runProjectCloseout(orgId: string, projectId: string) {
+  const db = (await import("@o/db/client")).getDb();
+  const { projects, contacts, milestones, timeEntries, invoices } = await import("@o/db/schema");
+  const { eq, and, asc, desc } = await import("drizzle-orm");
+
+  const [project] = await db.select().from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.orgId, orgId)))
+    .limit(1);
+  if (!project) throw new Error(`Project ${projectId} not found`);
+
+  const [client] = project.clientId
+    ? await db.select().from(contacts).where(eq(contacts.id, project.clientId)).limit(1)
+    : [null];
+
+  const projectMilestones = await db.select().from(milestones)
+    .where(eq(milestones.projectId, projectId))
+    .orderBy(asc(milestones.dueDate));
+
+  const completedMilestones = projectMilestones.filter((m) => m.status === "complete");
+  const incompleteMilestones = projectMilestones.filter((m) => m.status !== "complete" && m.status !== "canceled");
+
+  const totalHours = (await db.select().from(timeEntries)
+    .where(eq(timeEntries.projectId, projectId)))
+    .reduce((sum, e) => sum + (e.hours ?? 0), 0);
+
+  const projectInvoices = await db.select().from(invoices)
+    .where(eq(invoices.projectId, projectId))
+    .orderBy(desc(invoices.createdAt));
+
+  const unpaid = projectInvoices.filter((i) => i.status !== "paid");
+
+  const system = `You draft a project closeout message for a creative operations company. The project is done; the client gets a summary of what was delivered, what's outstanding, the financial state, and a thank-you. Be specific: name the milestones that were completed, name the ones that weren't. If there are unpaid invoices, mention them honestly but not aggressively. Never use exclamation marks. Never write "It was a pleasure" — find a real thing to thank them for.`;
+
+  const user = `Draft a project closeout for:
+
+Project: ${project.name}
+Service: ${project.service}
+Value: ${project.value} ${project.currency}
+
+Client: ${client ? `${client.firstName} ${client.lastName} (${client.email})` : "unknown"}
+
+Completed milestones (${completedMilestones.length}):
+${completedMilestones.map((m) => `- ${m.name}`).join("\n") || "(none)"}
+
+Outstanding milestones (${incompleteMilestones.length}):
+${incompleteMilestones.map((m) => `- ${m.name} (${m.status})`).join("\n") || "(none)"}
+
+Time logged: ${totalHours.toFixed(1)} hours total
+
+Invoices:
+${projectInvoices.map((i) => `- ${i.number}: $${(i.amount / 100).toFixed(2)} · ${i.status}`).join("\n")}
+
+${unpaid.length > 0 ? `⚠️  ${unpaid.length} unpaid invoice(s) totaling $${unpaid.reduce((s, i) => s + i.amount, 0) / 100}.` : "All invoices paid."}
+
+Return JSON with subject, body (150-300 words, markdown), and reasoning.`;
+
+  const result = await callStructured({
+    model: pickModel("summary"),
+    system, user,
+    schema: ProjectCloseoutSchema,
+    schemaName: "ProjectCloseout",
+  });
+
+  return draftFromStructuredResult({
+    orgId, kind: "project_closeout", subjectType: "project", subjectId: projectId,
+    title: `${project.name} — wrapped`,
+    reasoning: result.value.reasoning,
+    structured: result.value,
+    model: result.model,
+    promptTokens: result.promptTokens, completionTokens: result.completionTokens, costUsd: result.costUsd,
+  });
+}
+
+// =============================================================================
+// 10. weekly_client_digest
+// =============================================================================
+// Friday 4pm. The operator drafts a one-paragraph summary of each
+// active client's week: what was done, what's coming, anything that
+// needs their attention. Sent as one email per client.
+
+const weeklyClientDigestDef: ActionDefinition = {
+  kind: "weekly_client_digest",
+  label: "Weekly client digest",
+  description: "Friday 4pm: drafts a weekly summary for each active client.",
+  channel: "email",
+  triggers: [{ kind: "cron", expression: "0 16 * * 5", tz: "America/Chicago" }],
+  requiresApproval: true,
+  scope: "org",  // runs once per org, drafts per active client
+  cooldownMinutes: 60 * 24 * 6,  // weekly
+  defaultExpiryDays: 7,
+};
+registerAction(weeklyClientDigestDef);
+
+const WeeklyClientDigestSchema = z.object({
+  subject: z.string(),
+  body: z.string().describe("Markdown body. 100-200 words. Three short sections: this week, next week, anything that needs your attention."),
+  reasoning: z.string(),
+});
+
+export async function runWeeklyClientDigest(orgId: string, contactId: string) {
+  const db = (await import("@o/db/client")).getDb();
+  const { contacts, projects, timeEntries, tickets, milestones, invoices } = await import("@o/db/schema");
+  const { eq, and, gte, desc } = await import("drizzle-orm");
+
+  const [contact] = await db.select().from(contacts)
+    .where(and(eq(contacts.id, contactId), eq(contacts.orgId, orgId)))
+    .limit(1);
+  if (!contact) throw new Error(`Contact ${contactId} not found`);
+
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const [contactProjects, weekTimeEntries, weekTickets, openInvoices] = await Promise.all([
+    db.select().from(projects).where(and(eq(projects.clientId, contactId), eq(projects.status, "active"))),
+    db.select().from(timeEntries)
+      .where(and(eq(timeEntries.orgId, orgId), gte(timeEntries.occurredAt, weekAgo)))
+      .limit(20),
+    db.select().from(tickets)
+      .where(and(eq(tickets.contactId, contactId), eq(tickets.status, "open")))
+      .limit(5),
+    db.select().from(invoices)
+      .where(and(eq(invoices.contactId, contactId), eq(invoices.status, "sent")))
+      .limit(5),
+  ]);
+
+  // Aggregate time per project for the week
+  const timeByProject = new Map<string, number>();
+  for (const e of weekTimeEntries) {
+    timeByProject.set(e.projectId, (timeByProject.get(e.projectId) ?? 0) + (e.hours ?? 0));
+  }
+
+  const system = `You write a short weekly digest for a creative operations company's client. The digest is one email per client, sent Friday afternoon. It's three short sections: this week (what was done, in 1-2 sentences), next week (what's planned), and anything that needs their attention (open tickets, unpaid invoices, decisions they're holding up). Never use exclamation marks. Never write "I hope you had a great week." The tone is: we did the work, here's what's next, here's what we need from you.`;
+
+  const user = `Write the weekly digest for:
+
+Client: ${contact.firstName} ${contact.lastName}
+
+Active projects:
+${contactProjects.map((p) => `- ${p.name} (${p.service})`).join("\n") || "(none active this week)"}
+
+Hours logged this week (by project):
+${Array.from(timeByProject.entries()).map(([id, h]) => `- ${id}: ${h.toFixed(1)}h`).join("\n") || "(no time logged this week)"}
+
+Open tickets:
+${weekTickets.map((t) => `- ${t.subject} (${t.priority})`).join("\n") || "(none)"}
+
+Unpaid invoices:
+${openInvoices.map((i) => `- ${i.number}: $${(i.amount / 100).toFixed(2)}, due ${i.dueDate}`).join("\n") || "(none)"}
+
+Return JSON with subject, body (100-200 words, markdown), and reasoning.`;
+
+  const result = await callStructured({
+    model: pickModel("summary"),
+    system, user,
+    schema: WeeklyClientDigestSchema,
+    schemaName: "WeeklyClientDigest",
+  });
+
+  return draftFromStructuredResult({
+    orgId, kind: "weekly_client_digest", subjectType: "contact", subjectId: contactId,
+    title: `Weekly digest · ${contact.firstName}`,
+    reasoning: result.value.reasoning,
+    structured: result.value,
+    model: result.model,
+    promptTokens: result.promptTokens, completionTokens: result.completionTokens, costUsd: result.costUsd,
+  });
+}

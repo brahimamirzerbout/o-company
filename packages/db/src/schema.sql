@@ -701,3 +701,17 @@ CREATE INDEX people_deleted_at_idx ON people(deleted_at) WHERE deleted_at IS NOT
 -- contact is its own data subject).
 -- No schema change needed; the existing FK to people(id) becomes
 -- a soft reference after the null.
+
+-- === NAME: 005_operator_actions ===
+
+-- The 5 missing actions (lead_reengagement, project_kickoff,
+-- ticket_acknowledgement, project_closeout, weekly_client_digest)
+-- are added to the operator_draft_kind enum. Postgres requires
+-- ALTER TYPE ... ADD VALUE for each. New values must be committed
+-- before they can be used in the same transaction.
+
+ALTER TYPE operator_draft_kind ADD VALUE IF NOT EXISTS 'lead_reengagement';
+ALTER TYPE operator_draft_kind ADD VALUE IF NOT EXISTS 'project_kickoff';
+ALTER TYPE operator_draft_kind ADD VALUE IF NOT EXISTS 'ticket_acknowledgement';
+ALTER TYPE operator_draft_kind ADD VALUE IF NOT EXISTS 'project_closeout';
+ALTER TYPE operator_draft_kind ADD VALUE IF NOT EXISTS 'weekly_client_digest';

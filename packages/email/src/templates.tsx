@@ -603,6 +603,26 @@ export function PhotoReadyEmail(props: PhotoReadyEmailProps) {
   return baseDraftedEmail(props, "photos ready", "View variations", props.optOutUrl ?? "https://app.o.company/photos");
 }
 
+export interface LeadReengagementEmailProps extends OperatorDraftedEmailProps {}
+export function LeadReengagementEmail(props: LeadReengagementEmailProps) {
+  return baseDraftedEmail(props, "check-in", "Reply", props.optOutUrl ?? "https://app.o.company/contacts");
+}
+
+export interface ProjectKickoffEmailProps extends OperatorDraftedEmailProps {}
+export function ProjectKickoffEmail(props: ProjectKickoffEmailProps) {
+  return baseDraftedEmail(props, "project kickoff", "View project", props.optOutUrl ?? "https://app.o.company/projects");
+}
+
+export interface ProjectCloseoutEmailProps extends OperatorDraftedEmailProps {}
+export function ProjectCloseoutEmail(props: ProjectCloseoutEmailProps) {
+  return baseDraftedEmail(props, "project wrap-up", "View project", props.optOutUrl ?? "https://app.o.company/projects");
+}
+
+export interface WeeklyClientDigestEmailProps extends OperatorDraftedEmailProps {}
+export function WeeklyClientDigestEmail(props: WeeklyClientDigestEmailProps) {
+  return baseDraftedEmail(props, "weekly digest", "View portal", props.optOutUrl ?? "https://app.o.company");
+}
+
 // =============================================================================
 // Template registry
 // =============================================================================
@@ -624,6 +644,10 @@ export const TEMPLATES = {
   operator_deal_followup:     DealFollowupEmail,
   operator_invoice_reminder:  InvoiceReminderEmail,
   operator_photo_ready:       PhotoReadyEmail,
+  operator_lead_reengagement: LeadReengagementEmail,
+  operator_project_kickoff:   ProjectKickoffEmail,
+  operator_project_closeout:  ProjectCloseoutEmail,
+  operator_weekly_digest:     WeeklyClientDigestEmail,
 } as const;
 
 export type TemplateName = keyof typeof TEMPLATES;

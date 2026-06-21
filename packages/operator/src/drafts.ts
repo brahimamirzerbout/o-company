@@ -15,7 +15,10 @@ import { Draft, DraftStatus, ActionKind } from "./index";
 import { logger } from "@o/logger";
 import { errors, AppError } from "@o/errors";
 import { sendEmail } from "@o/email";
-import { MorningBriefingEmail, DealFollowupEmail, InvoiceReminderEmail, PhotoReadyEmail } from "@o/email/templates";
+import {
+  MorningBriefingEmail, DealFollowupEmail, InvoiceReminderEmail, PhotoReadyEmail,
+  LeadReengagementEmail, ProjectKickoffEmail, ProjectCloseoutEmail, WeeklyClientDigestEmail,
+} from "@o/email/templates";
 import { render } from "@react-email/render";
 
 // -----------------------------------------------------------------------------
@@ -324,10 +327,15 @@ function extractSubject(draft: Draft): string | null {
 function pickEmailTemplate(draft: Draft) {
   // Imported lazily so the bundle doesn't pull React Email into every call
   switch (draft.kind) {
-    case "morning_briefing":    return MorningBriefingEmail;
-    case "deal_followup_draft": return DealFollowupEmail;
-    case "invoice_reminder":    return InvoiceReminderEmail;
-    case "photo_progress_ping": return PhotoReadyEmail;
-    default:                    return MorningBriefingEmail;  // fallback
+    case "morning_briefing":       return MorningBriefingEmail;
+    case "deal_followup_draft":    return DealFollowupEmail;
+    case "invoice_reminder":       return InvoiceReminderEmail;
+    case "photo_progress_ping":    return PhotoReadyEmail;
+    case "lead_reengagement":      return LeadReengagementEmail;
+    case "project_kickoff":        return ProjectKickoffEmail;
+    case "project_closeout":       return ProjectCloseoutEmail;
+    case "weekly_client_digest":   return WeeklyClientDigestEmail;
+    // ticket_acknowledgement uses in_app channel, not email
+    default:                       return MorningBriefingEmail;  // fallback
   }
 }

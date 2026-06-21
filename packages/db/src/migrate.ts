@@ -92,10 +92,35 @@ async function applyMigrations() {
     }
     console.log(`  ${m.name}  (applying...)`);
     try {
-      await sql.begin(async (tx) => {
-        await tx.unsafe(m.sql);
-        await tx`INSERT INTO __migrations (name, checksum) VALUES (${m.name}, ${"sha256:" + Buffer.from(m.sql).toString("base64").slice(0, 32)})`;
-      });
+      // Postgres restriction: statements like ALTER TYPE ... ADD VALUE
+      // can't run inside a transaction block. We split any migration
+      // that contains them: the non-ALTER statements run in a transaction,
+      // the ALTER statements run outside one.
+      const hasAlterType = /\bALTER\s+TYPE\b/i.test(m.sql);
+      if (hasAlterType) {
+        // Split on ALTER TYPE ... ; boundaries
+        const parts = m.sql.split(/;\s*(?=ALTER\s+TYPE\b)/i);
+        // First chunk: everything up to the first ALTER TYPE
+        const before = parts[0].trim();
+        const alterChunks = parts.slice(1).map((p) => p.trim().endsWith(";") ? p.trim() : p.trim() + ";");
+        if (before) {
+          await sql.begin(async (tx) => {
+            await tx.unsafe(before);
+          });
+        }
+        for (const alter of alterChunks) {
+          await sql.unsafe(alter);
+        }
+        // Record the migration outside the transaction
+        await sql.begin(async (tx) => {
+          await tx`INSERT INTO __migrations (name, checksum) VALUES (${m.name}, ${"sha256:" + Buffer.from(m.sql).toString("base64").slice(0, 32)})`;
+        });
+      } else {
+        await sql.begin(async (tx) => {
+          await tx.unsafe(m.sql);
+          await tx`INSERT INTO __migrations (name, checksum) VALUES (${m.name}, ${"sha256:" + Buffer.from(m.sql).toString("base64").slice(0, 32)})`;
+        });
+      }
       console.log(`  ${m.name}  ✓`);
       count++;
     } catch (err) {

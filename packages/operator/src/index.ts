@@ -34,6 +34,11 @@ export const ACTION_KINDS = [
   "invoice_reminder",
   "photo_progress_ping",
   "client_brief_summary",
+  "lead_reengagement",
+  "project_kickoff",
+  "ticket_acknowledgement",
+  "project_closeout",
+  "weekly_client_digest",
 ] as const;
 export type ActionKind = (typeof ACTION_KINDS)[number];
 
@@ -74,7 +79,7 @@ export interface Draft {
   status: DraftStatus;
 
   // Who/what is this about
-  subjectType: "deal" | "contact" | "lead" | "invoice" | "ticket" | "project" | "photo_job" | "org";
+  subjectType: "deal" | "contact" | "lead" | "invoice" | "ticket" | "project" | "photo_job" | "org" | "milestone";
   subjectId: string;
 
   // Who needs to approve it
