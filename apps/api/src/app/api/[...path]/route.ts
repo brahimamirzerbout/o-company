@@ -60,6 +60,7 @@ const ID_TAIL: Record<string, { method: string; handler: keyof typeof routes }> 
   "GET  /api/audit/:id":            { method: "GET",    handler: "GET_audit_event" },
   "POST /api/lead-forms/submit":     { method: "POST",   handler: "POST_lead_form_submit" },
   "GET  /api/contacts/:id/timeline":  { method: "GET",    handler: "GET_contact_timeline" },
+  "GET  /api/contacts/:id/timeline/stream":  { method: "GET",    handler: "GET_contact_timeline_stream" },
   "GET  /api/crm/deals/insights":     { method: "GET",    handler: "GET_deal_insights" },
   "POST /api/crm/contacts/bulk-update": { method: "POST", handler: "POST_contacts_bulk_update" },
   "POST /api/crm/contacts/bulk-delete": { method: "POST", handler: "POST_contacts_bulk_delete" },
