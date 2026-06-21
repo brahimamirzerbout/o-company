@@ -333,6 +333,7 @@ async function resolveEntitiesForAction(kind: ActionKind, orgId: string): Promis
           eq(deals.orgId, orgId),
           sql`${deals.lastActivityAt} < ${cutoff}`,
           sql`${deals.stage} NOT IN ('won', 'lost')`,
+          sql`${deals.deletedAt} IS NULL`,
         ))
         .limit(50);
       return rows.map((r) => r.id);

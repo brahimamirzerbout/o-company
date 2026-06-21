@@ -757,3 +757,20 @@ ALTER TABLE deals ADD COLUMN loss_reason TEXT;
 -- Partial index for the "what makes us win" report.
 CREATE INDEX deals_won_reasons_idx ON deals(org_id, win_reason)
   WHERE stage = 'won' AND deleted_at IS NULL;
+
+-- === NAME: 009_deals_last_activity ===
+
+-- The operator's deal_followup_draft action finds stale deals via
+-- deals.last_activity_at. The column was missing from the schema;
+-- the action has been silently no-op'ing since it was written. This
+-- migration adds the column and the index.
+--
+-- The column is updated by:
+--   1. The contact timeline (any event for a contact bumps the
+--      last_activity_at of all the contact's open deals)
+--   2. The PATCH_deal handler (any update bumps it)
+--   3. The cron job (heartbeat to keep it fresh)
+ALTER TABLE deals ADD COLUMN last_activity_at TIMESTAMPTZ;
+UPDATE deals SET last_activity_at = updated_at WHERE last_activity_at IS NULL;
+CREATE INDEX deals_last_activity_idx ON deals(org_id, last_activity_at)
+  WHERE deleted_at IS NULL;

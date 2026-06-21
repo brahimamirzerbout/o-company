@@ -335,6 +335,7 @@ export const POST_deals = withAuth(async (ctx, { body }) => {
     ownerId: ctx.person.id,
     ...parsed.data,
     stageChangedAt: new Date(),
+    lastActivityAt: new Date(),
   }).returning();
   return NextResponse.json(created, { status: 201 });
 });
@@ -368,8 +369,15 @@ export const PATCH_deal = withAuth(async (ctx, { body }) => {
   }
 
   // If stage changes, also reset stageChangedAt and set closedAt
-  // for terminal stages (won, lost).
-  const updates: Record<string, unknown> = { ...parsed.data, updatedAt: new Date() };
+  // for terminal stages (won, lost). Every update bumps
+  // lastActivityAt so the deal_followup_draft operator action
+  // (which finds deals with no activity in 4+ days) doesn't
+  // false-positive on actively-maintained deals.
+  const updates: Record<string, unknown> = {
+    ...parsed.data,
+    updatedAt: new Date(),
+    lastActivityAt: new Date(),
+  };
   if (parsed.data.stage) {
     updates.stageChangedAt = new Date();
     if (parsed.data.stage === "won" || parsed.data.stage === "lost") {
