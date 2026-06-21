@@ -662,3 +662,25 @@ CREATE TABLE rate_limit_hits (
   hit_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX rate_limit_hits_key_idx ON rate_limit_hits(key, hit_at DESC);
+
+-- === NAME: 003_payments_hardening ===
+
+-- Idempotency: a given Stripe PaymentIntent can only result in one
+-- payment row, even if Stripe sends the same webhook event multiple
+-- times. The unique index makes the constraint a database invariant
+-- rather than a race-prone SELECT-then-INSERT in application code.
+-- The application still does the SELECT first for cleaner error
+-- messages, but the constraint is the source of truth.
+--
+-- We use a partial unique index because crypto payments don't have
+-- a Stripe PI id. NULL values don't conflict in PostgreSQL.
+CREATE UNIQUE INDEX payments_stripe_pi_unique
+  ON payments(stripe_payment_intent_id)
+  WHERE stripe_payment_intent_id IS NOT NULL;
+
+-- The status column already has 'overdue' as a valid value, but
+-- nothing in the app ever sets it. The operator's invoice reminder
+-- action depends on this. Add an index on (status, due_date) so the
+-- cron job that flips sent→overdue is fast.
+CREATE INDEX invoices_status_due_date_idx ON invoices(status, due_date)
+  WHERE status = 'sent';

@@ -18,20 +18,27 @@
 
 import { runOneTick } from "@o/operator/runner";
 import { cleanup as rateLimitCleanup } from "@o/ratelimit";
+import { flipOverdueInvoices } from "./overdue";
 import { logger } from "@o/logger";
 
-const TICK_INTERVAL_MS = 5 * 60 * 1000;  // 5 minutes
-const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes (rate limit hits older than 1h are deleted)
+const TICK_INTERVAL_MS = 5 * 60 * 1000;          // 5 minutes
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;       // rate-limit cleanup
+const OVERDUE_INTERVAL_MS = 15 * 60 * 1000;       // invoice overdue flipper (15 min — not time-sensitive)
 
 async function main() {
-  logger.info("Operator worker starting", { tickIntervalMs: TICK_INTERVAL_MS });
-  // First tick immediately
+  logger.info("Operator worker starting", {
+    tickIntervalMs: TICK_INTERVAL_MS,
+    cleanupIntervalMs: CLEANUP_INTERVAL_MS,
+    overdueIntervalMs: OVERDUE_INTERVAL_MS,
+  });
+  // First run of each immediately
   await tick();
-  // First cleanup immediately
   await cleanup();
+  await flip();
   // Then on interval
   setInterval(tick, TICK_INTERVAL_MS);
   setInterval(cleanup, CLEANUP_INTERVAL_MS);
+  setInterval(flip, OVERDUE_INTERVAL_MS);
 }
 
 async function tick() {
@@ -49,6 +56,17 @@ async function cleanup() {
     logger.info("Rate-limit cleanup", result);
   } catch (err) {
     logger.error("Rate-limit cleanup failed", { err: String(err) });
+  }
+}
+
+async function flip() {
+  try {
+    const result = await flipOverdueInvoices();
+    if (result.flipped > 0) {
+      logger.info("Overdue invoices flipped", result);
+    }
+  } catch (err) {
+    logger.error("Overdue flip failed", { err: String(err) });
   }
 }
 

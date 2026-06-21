@@ -186,6 +186,21 @@ async function dispatch(event: Stripe.Event) {
       return;
     }
 
+    case "payment_intent.requires_action": {
+      // 3D Secure (SCA) challenge required. The customer is on their
+      // bank's authentication page. Stripe will send payment_intent.succeeded
+      // (or .payment_failed) once the challenge completes. We log the
+      // event so the team can see what's happening if a customer gets
+      // stuck; we don't change any DB state.
+      const pi = event.data.object as Stripe.PaymentIntent;
+      logger.info("stripe.webhook.3ds_required", {
+        piId: pi.id,
+        invoiceId: pi.metadata?.invoiceId,
+        nextAction: pi.next_action?.type,
+      });
+      return;
+    }
+
     case "charge.refunded": {
       const ch = event.data.object as Stripe.Charge;
       if (!ch.payment_intent) return;

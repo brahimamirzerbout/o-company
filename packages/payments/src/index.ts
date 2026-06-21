@@ -14,6 +14,13 @@
 
 import Stripe from "stripe";
 import { type Currency, type PaymentMethod } from "@o/types";
+import { assertStripeKeyForEnv, type StripeMode } from "./key-guard";
+
+// Run the boot-time key check. Throws in production with a test key
+// or a missing key. Warns in dev. This is the single line of defense
+// against the "I shipped with sk_test_ because I copied from the example"
+// failure mode.
+assertStripeKeyForEnv(process.env.STRIPE_SECRET_KEY);
 
 let _stripe: Stripe | null = null;
 export function stripe(): Stripe {
@@ -22,6 +29,11 @@ export function stripe(): Stripe {
   if (!key) throw new Error("STRIPE_SECRET_KEY not set");
   _stripe = new Stripe(key, { apiVersion: "2024-10-28.acacia" });
   return _stripe;
+}
+
+/** The mode (live/test) the currently-configured key is for. */
+export function currentStripeMode(): StripeMode {
+  return require("./key-guard").stripeModeForKey(process.env.STRIPE_SECRET_KEY) ?? "test";
 }
 
 // =============================================================================
@@ -164,5 +176,50 @@ export function mapPaymentMethod(pm: Stripe.PaymentMethod): PaymentMethod {
       };
     default:
       return { kind: "card", brand: "unknown", last4: "0000" };
+  }
+}
+
+// =============================================================================
+// 3D Secure / SCA handling
+// =============================================================================
+// EU regulations require 3DS for most card payments. Stripe handles
+// this automatically when `automatic_payment_methods` is enabled
+// (which we do above). The PaymentIntent transitions to
+// `requires_action` when 3DS is needed. The front-end must:
+//
+//   1. Receive the PaymentIntent's client_secret
+//   2. Call stripe.confirmCardPayment with the client_secret
+//   3. If the result.error.type === "card_needs_3ds_confirmation",
+//      call stripe.handleCardAction with the same client_secret
+//   4. After 3DS completes, Stripe sends payment_intent.succeeded
+//      (or .payment_failed) via webhook
+//
+// We don't have a Stripe.js front-end yet (we use hosted Checkout).
+// Hosted Checkout handles 3DS in the redirect flow. So this is for
+// future use when we add an Elements-based form.
+//
+// The webhook handler below already handles the .succeeded event.
+
+/**
+ * Inspects a PaymentIntent and returns a normalized status.
+ * Maps Stripe's many status strings to the 4 states the front-end
+ * cares about: succeeded, failed, requires_action, pending.
+ */
+export function normalizePaymentIntentStatus(stripeStatus: string): "succeeded" | "failed" | "requires_action" | "pending" {
+  switch (stripeStatus) {
+    case "succeeded":
+    case "processing":       // ACH/wire — will succeed in 1-2 days
+      return "succeeded";
+    case "requires_payment_method":
+    case "requires_confirmation":
+    case "requires_action":  // 3DS
+    case "requires_capture":
+      return "requires_action";
+    case "canceled":
+      return "failed";
+    case "processing":
+      return "pending";
+    default:
+      return "pending";
   }
 }

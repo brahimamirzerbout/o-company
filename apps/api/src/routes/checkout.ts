@@ -43,7 +43,7 @@ export const POST_checkout = withAuth(async (ctx) => {
     throw errors.validation("Invoice is already paid");
   }
 
-  // Find or create the Stripe Customer for this contact
+  // Find or create the Stripe Customer for the contact
   const [contact] = inv.contactId
     ? await db.select().from(contacts).where(eq(contacts.id, inv.contactId)).limit(1)
     : [null];
@@ -68,7 +68,19 @@ export const POST_checkout = withAuth(async (ctx) => {
     }
   }
 
-  // Build the checkout session
+  // Build the checkout session.
+  //
+  // Idempotency: the key is `checkout:${invoiceId}`. A double-click on
+  // "Pay" within the same minute sends two requests with the same key
+  // — Stripe returns the same session, no double-charge risk. The
+  // expires_at is on the session, not the key, so this is safe across
+  // the session lifetime (default 24h).
+  //
+  // We do NOT include the user id in the key. The contract is: one
+  // outstanding checkout session per invoice. If two staff members
+  // click "Pay" simultaneously, the second one gets the same session
+  // as the first. That's the correct behavior — there's only one
+  // invoice to pay.
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? new URL(ctx.req.url).origin;
   const successUrl = body.successUrl ?? `${baseUrl}/invoices/${inv.id}?status=success&session_id={CHECKOUT_SESSION_ID}`;
   const cancelUrl = body.cancelUrl ?? `${baseUrl}/invoices/${inv.id}?status=canceled`;
@@ -108,7 +120,7 @@ export const POST_checkout = withAuth(async (ctx) => {
     billing_address_collection: "auto",
     automatic_tax: { enabled: false },   // set up Stripe Tax separately
   }, {
-    idempotencyKey: `checkout-${inv.id}-${Date.now()}`,
+    idempotencyKey: `checkout:${inv.id}`,
   });
 
   logger.info("stripe.checkout_created", { invoiceId: inv.id, sessionId: session.id });

@@ -6,6 +6,13 @@
 // load balancers, and the deploy script.
 //
 // This is the only route that doesn't require auth. Public.
+//
+// The side-effect import at the top of this file runs once at module
+// load time. It validates the Stripe key shape for the current
+// NODE_ENV. Throws in production with a test key or a missing key.
+// Fails loud at boot, not silent in the first request.
+
+import "@o/payments/key-guard";
 
 import { NextResponse } from "next/server";
 import { getDb, closeDb } from "@o/db/client";
