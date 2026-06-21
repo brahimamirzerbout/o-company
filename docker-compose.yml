@@ -1,0 +1,46 @@
+# =============================================================================
+# o.company · local development stack
+# =============================================================================
+# Spin up a complete dev environment: Postgres + MailHog (catches outgoing
+# email so you can inspect it in a web UI). Run with:
+#
+#   docker compose up -d
+#   pnpm --filter @o/db migrate
+#   pnpm --filter @o/db seed
+#
+# Then:
+#   pnpm dev   # starts all 5 apps
+#
+# MailHog UI:   http://localhost:8025
+# Postgres:     postgresql://o:o@localhost:5432/o_company
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: o-company-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: o
+      POSTGRES_PASSWORD: o
+      POSTGRES_DB: o_company
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U o -d o_company"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: o-company-mailhog
+    restart: unless-stopped
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # Web UI
+
+volumes:
+  postgres_data:
+    name: o-company-postgres-data
