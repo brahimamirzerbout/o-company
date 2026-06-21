@@ -1,0 +1,81 @@
+name: iOS build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/ios/**"
+      - ".github/workflows/ios-build.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/ios/**"
+  workflow_dispatch:    # manual trigger
+
+# iOS builds need macOS. macOS runners are more expensive than Linux
+# runners in GitHub Actions. This workflow only runs on changes to
+# the iOS app — not on every PR.
+
+jobs:
+  build-ios:
+    name: iOS build (Xcode 15)
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 15
+        run: sudo xcode-select -s /Applications/Xcode_15.0.app
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install workspace deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Regenerate Xcode project
+        working-directory: apps/ios
+        run: xcodegen generate
+
+      - name: Build for simulator
+        # Building for the iOS Simulator doesn't require code signing.
+        # This is what CI does. For TestFlight (real device), you need
+        # signing — see scripts/ios-testflight.sh.
+        working-directory: apps/ios
+        run: |
+          xcodebuild \
+            -project Noira.xcodeproj \
+            -scheme Noira \
+            -configuration Debug \
+            -destination 'platform=iOS Simulator,name=iPhone 15' \
+            -derivedDataPath build \
+            build
+
+      - name: Verify Swift types compile
+        # Even without running the app, the type checker catches most
+        # of the regressions a PR would introduce.
+        working-directory: apps/ios
+        run: |
+          xcodebuild \
+            -project Noira.xcodeproj \
+            -scheme Noira \
+            -configuration Debug \
+            -destination 'platform=iOS Simulator,name=iPhone 15' \
+            -derivedDataPath build \
+            -dry-run build
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator-build
+          path: apps/ios/build/Build/Products/Debug-iphonesimulator/Noira.app
+          if-no-files-found: error
