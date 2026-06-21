@@ -1,0 +1,22 @@
+{
+  "name": "@o/photo-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@o/photo": "workspace:*",
+    "@o/storage": "workspace:*",
+    "@o/logger": "workspace:*",
+    "@o/errors": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "4.20241218.0",
+    "typescript": "5.6.3",
+    "wrangler": "3.95.0"
+  }
+}

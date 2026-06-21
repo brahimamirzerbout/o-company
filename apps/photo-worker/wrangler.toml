@@ -1,0 +1,29 @@
+name = "o-photo-worker"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# R2 bucket for original uploads and processed variations
+[[r2_buckets]]
+binding = "PHOTOS"
+bucket_name = "o-photos"
+preview_bucket_name = "o-photos-dev"
+
+# Public CDN host for serving variation results (configure in dashboard)
+# R2_PUBLIC_HOST = "https://photos.o.company"
+
+# Queue: the API enqueues a message when a new job is created
+[[queues.producers]]
+binding = "PHOTO_JOB_QUEUE"
+queue = "o-photo-jobs"
+
+[[queues.consumers]]
+queue = "o-photo-jobs"
+max_batch_size = 1
+max_retries = 3
+dead_letter_queue = "o-photo-jobs-dlq"
+
+# Secrets (set via `wrangler secret put`)
+# REPLICATE_API_TOKEN
+# API_BASE_URL
+# API_SERVICE_TOKEN

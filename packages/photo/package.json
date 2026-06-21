@@ -1,0 +1,20 @@
+{
+  "name": "@o/photo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./models": "./src/models.ts",
+    "./variations": "./src/variations.ts"
+  },
+  "scripts": { "typecheck": "tsc --noEmit" },
+  "dependencies": {
+    "@o/types": "workspace:*",
+    "@o/errors": "workspace:*",
+    "@o/logger": "workspace:*"
+  },
+  "devDependencies": { "typescript": "5.6.3" }
+}

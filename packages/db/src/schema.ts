@@ -510,3 +510,89 @@ export const invoiceRelations = relations(invoices, ({ one, many }) => ({
   lines: many(invoiceLines),
   payments: many(payments),
 }));
+
+// =============================================================================
+// Photo pipeline
+// =============================================================================
+// A photo job is one upload that produces N variations. The variations
+// table is one row per kind — denormalized so we can update individual
+// variations independently (one may fail, others succeed).
+
+export const photoJobStatusEnum = pgEnum("photo_job_status", [
+  "queued", "processing", "ready", "failed", "canceled",
+]);
+
+export const photoVariationKindEnum = pgEnum("photo_variation_kind", [
+  "original", "upscaled-2x", "upscaled-4x", "color-noira",
+  "no-bg", "restored", "crop-square", "crop-portrait", "denoised",
+]);
+
+export const photoJobs = pgTable("photo_jobs", {
+  id:           text("id").primaryKey(),                    // phj_<uuid>
+  orgId:        uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+  uploadedBy:   uuid("uploaded_by").notNull().references(() => people.id),
+  tenant:       text("tenant").notNull(),                    // storage key prefix (usually = orgId)
+
+  // Original upload metadata
+  originalKey:  text("original_key").notNull(),
+  originalUrl:  text("original_url").notNull(),
+  filename:     text("filename").notNull(),
+  contentType:  text("content_type").notNull(),
+  sizeBytes:    integer("size_bytes").notNull(),
+  width:        integer("width"),
+  height:       integer("height"),
+
+  // What the client asked for
+  requestedVariations: jsonb("requested_variations").$type<string[]>().notNull(),
+
+  // Status
+  status:       photoJobStatusEnum("status").notNull().default("queued"),
+  totalCostUsd: real("total_cost_usd").notNull().default(0),
+
+  // Optional metadata
+  caption:      text("caption"),
+  notes:        text("notes"),
+
+  createdAt:    timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:    timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  finishedAt:   timestamp("finished_at", { withTimezone: true }),
+}, (t) => ({
+  orgIdx:    index("photo_jobs_org_idx").on(t.orgId),
+  statusIdx: index("photo_jobs_status_idx").on(t.status),
+  createdIdx: index("photo_jobs_created_idx").on(t.createdAt),
+}));
+
+export const photoVariations = pgTable("photo_variations", {
+  id:          text("id").primaryKey(),                      // phv_<uuid>
+  jobId:       text("job_id").notNull().references(() => photoJobs.id, { onDelete: "cascade" }),
+
+  kind:        photoVariationKindEnum("kind").notNull(),
+
+  // Result. All null while the variation is in flight.
+  key:         text("key"),
+  url:         text("url"),
+  sizeBytes:   integer("size_bytes"),
+  width:       integer("width"),
+  height:      integer("height"),
+  costUsd:     real("cost_usd"),
+  durationMs:  integer("duration_ms"),
+  error:       text("error"),
+
+  finishedAt:  timestamp("finished_at", { withTimezone: true }),
+
+  createdAt:   timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:   timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  jobIdx:     index("photo_variations_job_idx").on(t.jobId),
+  jobKindIdx: uniqueIndex("photo_variations_job_kind_idx").on(t.jobId, t.kind),
+}));
+
+export const photoJobRelations = relations(photoJobs, ({ one, many }) => ({
+  org: one(orgs, { fields: [photoJobs.orgId], references: [orgs.id] }),
+  uploader: one(people, { fields: [photoJobs.uploadedBy], references: [people.id] }),
+  variations: many(photoVariations),
+}));
+
+export const photoVariationRelations = relations(photoVariations, ({ one }) => ({
+  job: one(photoJobs, { fields: [photoVariations.jobId], references: [photoJobs.id] }),
+}));
