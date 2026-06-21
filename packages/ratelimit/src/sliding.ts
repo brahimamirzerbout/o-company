@@ -168,3 +168,12 @@ export function keyFromRequest(req: Request, prefix: string): string {
   const ip = (forwarded?.split(",")[0]?.trim() ?? real ?? "unknown");
   return `${prefix}:${ip}`;
 }
+
+/**
+ * Build a key for an authenticated route — key on the person id, not
+ * the IP. This is the right key for the CRM: a user with stolen
+ * credentials on a different IP would otherwise evade the limit.
+ */
+export function keyFromAuth(personId: string, prefix: string): string {
+  return `${prefix}:person:${personId}`;
+}

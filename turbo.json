@@ -1,14 +1,11 @@
-// Turborepo build orchestration. Every package defines the same set of tasks
-// with the same dependency graph so we can build/test/lint in parallel.
-
-const config = {
-  $schema: "https://turbo.build/schema.json",
-  globalDependencies: ["**/.env.*local", "tsconfig.base.json"],
-  tasks: {
-    build: {
-      dependsOn: ["^build"],
-      outputs: [".next/**", "!.next/cache/**", "dist/**", "build/**"],
-      env: [
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": ["**/.env.*local", "tsconfig.base.json"],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": [".next/**", "!.next/cache/**", "dist/**", "build/**"],
+      "env": [
         "DATABASE_URL",
         "STRIPE_SECRET_KEY",
         "STRIPE_WEBHOOK_SECRET",
@@ -18,28 +15,26 @@ const config = {
         "WALLETCONNECT_PROJECT_ID",
         "RESEND_API_KEY",
         "JWT_SECRET",
-        "ENCRYPTION_KEY",
-      ],
+        "ENCRYPTION_KEY"
+      ]
     },
-    dev: {
-      cache: false,
-      persistent: true,
+    "dev": {
+      "cache": false,
+      "persistent": true
     },
-    lint: {
-      outputs: [],
+    "lint": {
+      "outputs": []
     },
-    typecheck: {
-      dependsOn: ["^build"],
-      outputs: [],
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": []
     },
-    test: {
-      dependsOn: ["^build"],
-      outputs: ["coverage/**"],
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"]
     },
-    clean: {
-      cache: false,
-    },
-  },
-};
-
-export default config;
+    "clean": {
+      "cache": false
+    }
+  }
+}

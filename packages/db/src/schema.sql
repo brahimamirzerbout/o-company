@@ -733,3 +733,12 @@ CREATE TABLE lead_form_submissions (
 );
 CREATE INDEX lead_form_submissions_org_idx ON lead_form_submissions(org_id, received_at DESC);
 CREATE INDEX lead_form_submissions_contact_idx ON lead_form_submissions(contact_id);
+
+-- === NAME: 007_deals_soft_delete ===
+
+-- P0-2 (CRM_LIMITS.md): the deals table had a hard delete with no
+-- audit trail. We add deletedAt to mirror contacts. Existing DELETE
+-- behavior is preserved for ?hard=true queries; default is soft
+-- delete + audit_event.
+ALTER TABLE deals ADD COLUMN deleted_at TIMESTAMPTZ;
+CREATE INDEX deals_org_active_idx ON deals(org_id) WHERE deleted_at IS NULL;
