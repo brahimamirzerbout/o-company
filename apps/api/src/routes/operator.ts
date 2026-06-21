@@ -15,6 +15,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { withAuth } from "@/middleware/with-auth";
+import { requireRole } from "@o/auth";
 import { getDb } from "@o/db/client";
 import { operatorDrafts } from "@o/db/schema";
 import { eq, and, desc, inArray, sql, count, sum, gte } from "drizzle-orm";
@@ -179,10 +180,7 @@ export const operatorStats = withAuth(async (ctx) => {
 // POST /api/operator/tick  (admin only — manual trigger for testing)
 // -----------------------------------------------------------------------------
 
-export const tickOperator = withAuth(async (ctx) => {
-  if (ctx.person.role !== "owner" && ctx.person.role !== "admin") {
-    throw errors.forbidden("Only owner/admin can trigger a tick");
-  }
+export const tickOperator = requireRole("admin", async () => {
   const { runOneTick } = await import("@o/operator/runner");
   const result = await runOneTick();
   return NextResponse.json(result);

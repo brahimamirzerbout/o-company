@@ -16,12 +16,17 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { withAuth } from "@/middleware/with-auth";
+import { requireRole } from "@o/auth";
 import { getDb } from "@o/db/client";
 import { briefEntries, contacts } from "@o/db/schema";
 import { eq, and, desc, isNull, count } from "drizzle-orm";
 import { errors } from "@o/errors";
 import { checkRateLimit, keyFromRequest } from "@o/ratelimit";
 import { randomUUID } from "crypto";
+
+const TestFireSchema = z.object({
+  contactId: z.string().optional(),
+});
 
 // -----------------------------------------------------------------------------
 // GET /api/brief  — the feed
@@ -177,13 +182,11 @@ export const markAllRead = withAuth(async (ctx) => {
 // so the feed has content to render. In dev (no real contacts seeded), this
 // creates a contact for the calling person on the fly.
 
-export const testFire = withAuth(async (ctx) => {
-  if (ctx.person.role !== "owner" && ctx.person.role !== "admin") {
-    throw errors.forbidden("Only owner/admin can test-fire");
-  }
+export const testFire = requireRole("admin", async (ctx, { body }) => {
+  const data = TestFireSchema.parse(body);
   const db = getDb();
   const orgId = ctx.org.id;
-  let contactId = ctx.person.id;
+  const contactId = data.contactId ?? ctx.person.id;
 
   // Make sure the person is also a contact (dev convenience)
   const [existing] = await db.select().from(contacts).where(eq(contacts.id, contactId)).limit(1);
