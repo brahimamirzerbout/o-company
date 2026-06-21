@@ -29,7 +29,7 @@ const companySchema = z.object({
 });
 
 export const GET_companies = withAuth(async (ctx) => {
-  requirePermission(ctx.person, "contacts:read");
+  requirePermission(ctx.person, "crm:read");
   // P1-2: rate-limit reads
   const limited = await checkRateLimit({ key: keyFromAuth(ctx.person.id, "crm:companies:read"), limit: 60, windowSeconds: 60 });
   if (limited) return limited;
@@ -56,7 +56,7 @@ export const GET_companies = withAuth(async (ctx) => {
 });
 
 export const POST_companies = withAuth(async (ctx, { body }) => {
-  requirePermission(ctx.person, "contacts:write");
+  requirePermission(ctx.person, "crm:write");
   const parsed = companySchema.safeParse(body);
   if (!parsed.success) throw errors.validation("Invalid input", { issues: parsed.error.issues });
   const db = getDb();
@@ -66,7 +66,7 @@ export const POST_companies = withAuth(async (ctx, { body }) => {
 
 export const GET_company = withAuth(async (ctx) => {
   const id = pathLast(ctx.req);
-  requirePermission(ctx.person, "contacts:read");
+  requirePermission(ctx.person, "crm:read");
   const db = getDb();
   const [company] = await db.select().from(companies).where(and(eq(companies.id, id), eq(companies.orgId, ctx.org.id)));
   if (!company) throw errors.notFound("Company");
@@ -75,7 +75,7 @@ export const GET_company = withAuth(async (ctx) => {
 
 export const PATCH_company = withAuth(async (ctx, { body }) => {
   const id = pathLast(ctx.req);
-  requirePermission(ctx.person, "contacts:write");
+  requirePermission(ctx.person, "crm:write");
   const parsed = companySchema.partial().safeParse(body);
   if (!parsed.success) throw errors.validation("Invalid input");
   const db = getDb();
@@ -86,7 +86,7 @@ export const PATCH_company = withAuth(async (ctx, { body }) => {
 
 export const DELETE_company = withAuth(async (ctx) => {
   const id = pathLast(ctx.req);
-  requirePermission(ctx.person, "contacts:delete");
+  requirePermission(ctx.person, "crm:delete");
   const db = getDb();
   await db.delete(companies).where(and(eq(companies.id, id), eq(companies.orgId, ctx.org.id)));
   return NextResponse.json({ ok: true });
@@ -137,7 +137,7 @@ const contactSchema = z.object({
 });
 
 export const GET_contacts = withAuth(async (ctx) => {
-  requirePermission(ctx.person, "contacts:read");
+  requirePermission(ctx.person, "crm:read");
   // P1-2: rate-limit reads. 60/min per user. The stress test
   // crm-bulk-create would otherwise hammer this endpoint.
   const limited = await checkRateLimit({ key: keyFromAuth(ctx.person.id, "crm:contacts:read"), limit: 60, windowSeconds: 60 });
@@ -201,7 +201,7 @@ export const GET_contacts = withAuth(async (ctx) => {
 });
 
 export const POST_contacts = withAuth(async (ctx, { body }) => {
-  requirePermission(ctx.person, "contacts:write");
+  requirePermission(ctx.person, "crm:write");
   const parsed = contactSchema.safeParse(body);
   if (!parsed.success) throw errors.validation("Invalid input", { issues: parsed.error.issues });
   const db = getDb();
@@ -215,7 +215,7 @@ export const POST_contacts = withAuth(async (ctx, { body }) => {
 
 export const GET_contact = withAuth(async (ctx) => {
   const id = pathLast(ctx.req);
-  requirePermission(ctx.person, "contacts:read");
+  requirePermission(ctx.person, "crm:read");
   const db = getDb();
   const [contact] = await db.select().from(contacts).where(and(eq(contacts.id, id), eq(contacts.orgId, ctx.org.id), isNull(contacts.deletedAt)));
   if (!contact) throw errors.notFound("Contact");
@@ -224,7 +224,7 @@ export const GET_contact = withAuth(async (ctx) => {
 
 export const PATCH_contact = withAuth(async (ctx, { body }) => {
   const id = pathLast(ctx.req);
-  requirePermission(ctx.person, "contacts:write");
+  requirePermission(ctx.person, "crm:write");
   const parsed = contactSchema.partial().safeParse(body);
   if (!parsed.success) throw errors.validation("Invalid input");
   const db = getDb();
@@ -238,7 +238,7 @@ export const PATCH_contact = withAuth(async (ctx, { body }) => {
 
 export const DELETE_contact = withAuth(async (ctx) => {
   const id = pathLast(ctx.req);
-  requirePermission(ctx.person, "contacts:delete");
+  requirePermission(ctx.person, "crm:delete");
   const db = getDb();
   await db.update(contacts).set({ deletedAt: new Date() }).where(and(eq(contacts.id, id), eq(contacts.orgId, ctx.org.id)));
   return NextResponse.json({ ok: true });

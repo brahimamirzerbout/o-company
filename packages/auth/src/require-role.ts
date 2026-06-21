@@ -13,18 +13,12 @@ import { NextResponse } from "next/server";
 import { errors } from "@o/errors";
 import { withAuth, type AuthedContext } from "./session";
 import { logger } from "@o/logger";
+import { roleHasPermission, ROLE_PERMISSIONS, type Role } from "./permissions";
 
-export type Role = "owner" | "admin" | "manager" | "operator" | "client" | "guest";
+export type { Role };
 
 /** Roles that satisfy a "min role" check, in increasing privilege. */
-const ROLE_LEVEL: Record<Role, number> = {
-  guest: 0,
-  client: 1,
-  operator: 2,
-  manager: 3,
-  admin: 4,
-  owner: 5,
-};
+export { ROLE_LEVEL as ROLE_LEVEL_FOR_COMPAT } from "./permissions";
 
 /**
  * Wraps a handler that requires a minimum role level.
@@ -37,8 +31,8 @@ export function requireRole<T = unknown>(
   handler: (ctx: AuthedContext, args: { req: Request; body: T }) => Promise<Response>,
 ) {
   return withAuth(async (ctx, args) => {
-    const actorLevel = ROLE_LEVEL[ctx.person.role as Role] ?? 0;
-    const requiredLevel = ROLE_LEVEL[minRole];
+    const requiredLevel = ROLE_LEVEL_FOR_COMPAT[minRole];
+    const actorLevel = ROLE_LEVEL_FOR_COMPAT[ctx.person.role as Role] ?? 0;
     if (actorLevel < requiredLevel) {
       logger.warn("authz.role_denied", {
         actorId: ctx.person.id,
@@ -63,10 +57,14 @@ export function requireRole<T = unknown>(
 
 /**
  * Wraps a handler that requires a specific permission string.
- * For now this just maps to role levels, but the schema has a
- * permissions table reserved for fine-grained RBAC. The hook
- * is here so we can add per-permission checks without changing
- * the route signatures.
+ * Used for fine-grained RBAC. The role→permissions map is in
+ * permissions.ts. Owner and admin get a wildcard. Other roles
+ * get explicit grants.
+ *
+ *   export const GET_contact = withAuth(async (ctx) => {
+ *     requirePermission(ctx.person, "crm:read");
+ *     // ...
+ *   });
  */
 export function requirePermission(
   person: { id: string; role: string; extraPermissions?: string[] | null },
@@ -75,19 +73,16 @@ export function requirePermission(
   // Owner can do anything
   if (person.role === "owner") return;
 
-  // TODO: when we add the permissions table, check person.extraPermissions
-  // For now, map common permissions to roles
-  const rolePermissions: Record<string, string[]> = {
-    admin: ["*"],
-    manager: ["crm:read", "crm:write", "projects:read", "projects:write", "invoices:read", "invoices:write", "contacts:read", "contacts:write"],
-    operator: ["crm:read", "projects:read", "projects:write", "contacts:read", "time:write"],
-    client: [],
-    guest: [],
-  };
+  // Per-person overrides: if the person has extraPermissions set
+  // and one of them matches, allow. This is a TODO for the
+  // permissions table that adds a per-person grant store.
+  if (person.extraPermissions?.includes(permission)) return;
 
-  const perms = rolePermissions[person.role] ?? [];
-  if (perms.includes("*")) return;
-  if (perms.includes(permission)) return;
-
-  throw errors.forbidden(`Missing permission: ${permission}`);
+  // Standard role grant
+  if (!roleHasPermission(person.role as Role, permission)) {
+    throw errors.forbidden(`Missing permission: ${permission}`);
+  }
 }
+
+// Re-export the role→permissions map for any caller that needs it.
+export { ROLE_PERMISSIONS };
