@@ -115,6 +115,13 @@ The Master Services Agreement, Data Processing Addendum, and Acceptable Use Poli
 - **API server** — Business Source License 1.1 (source-available; converts to Apache 2.0 four years after each release)
 - **Brand** ("o.company" name and logo) — All rights reserved
 
+## Deploying to production
+
+Read **[SETUP.md](./SETUP.md)** before your first deploy. It walks
+through every env var, every account you need, and the exact failure
+mode if you skip a step. The trust model assumes production is
+configured correctly; this file is the configuration checklist.
+
 ## The operator
 
 The AI parts of o.company (the `morning_briefing`, `deal_followup_draft`,
