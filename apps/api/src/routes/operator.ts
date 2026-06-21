@@ -21,11 +21,14 @@ import { operatorDrafts } from "@o/db/schema";
 import { eq, and, desc, inArray, sql, count, sum, gte } from "drizzle-orm";
 import {
   listDrafts, getDraft, approveDraft, rejectDraft,
+  pickEmailTemplate, extractSubject,
 } from "@o/operator/drafts";
 import { listActions, DRAFT_STATUSES } from "@o/operator";
 import { triggerEvent } from "@o/operator/runner";
 import { checkRateLimit, keyFromRequest } from "@o/ratelimit";
 import { errors } from "@o/errors";
+import { render } from "@react-email/render";
+import { Draft } from "@o/operator";
 
 // -----------------------------------------------------------------------------
 // GET /api/operator/drafts
@@ -61,6 +64,53 @@ export const getOperatorDraft = withAuth(async (ctx) => {
   const draft = await getDraft(ctx.org.id, draftId);
   if (!draft) throw errors.notFound("Draft");
   return NextResponse.json({ draft });
+});
+
+// -----------------------------------------------------------------------------
+// GET /api/operator/drafts/:id/preview
+// -----------------------------------------------------------------------------
+// Returns the fully-rendered HTML of the email as the recipient will
+// see it. Used by the briefing page's "Preview" button so the human
+// can see what they're about to approve, not just the markdown body.
+//
+// Returns an iframe-able HTML document. The operator's drafts are
+// always email-channel for this endpoint to do something useful;
+// in_app and other channels return a "this draft is not an email"
+// message.
+
+export const previewOperatorDraft = withAuth(async (ctx) => {
+  // Rate limit: 30 previews per user per minute. Previewing is a UI
+  // operation; users click it a few times. 30/min is a generous cap.
+  const limited = await checkRateLimit({
+    key: `operator:preview:${ctx.person.id}`,
+    limit: 30,
+    windowSeconds: 60,
+  });
+  if (limited) return limited;
+
+  const draftId = ctx.req.nextUrl.pathname.split("/").slice(-2, -1)[0]!;
+  const draft = await getDraft(ctx.org.id, draftId);
+  if (!draft) throw errors.notFound("Draft");
+  if (draft.channel !== "email") {
+    return NextResponse.json({
+      ok: false,
+      channel: draft.channel,
+      message: `This draft is a ${draft.channel}, not an email. There is nothing to preview.`,
+    });
+  }
+
+  const template = pickEmailTemplate(draft);
+  const body = draft.editedBody ?? draft.body;
+  const html = await render(template({
+    subject: extractSubject(draft) ?? draft.title,
+    body,
+    preview: draft.reasoning,
+    draftId: draft.id,
+  }));
+
+  return new NextResponse(html, {
+    headers: { "content-type": "text/html; charset=utf-8" },
+  });
 });
 
 // -----------------------------------------------------------------------------

@@ -84,6 +84,7 @@ const ID_TAIL: Record<string, { method: string; handler: keyof typeof routes }> 
   "GET  /api/photos/jobs/:id":       { method: "GET",    handler: "getJob" },
   "POST /api/photos/jobs/:id/status": { method: "POST", handler: "updateStatus" },
   "GET  /api/operator/drafts/:id":   { method: "GET",    handler: "getOperatorDraft" },
+  "GET  /api/operator/drafts/:id/preview": { method: "GET", handler: "previewOperatorDraft" },
   "POST /api/operator/drafts/:id/approve": { method: "POST", handler: "approveOperatorDraft" },
   "POST /api/operator/drafts/:id/reject":  { method: "POST", handler: "rejectOperatorDraft" },
   "POST /api/operator/drafts/:id/skip":    { method: "POST", handler: "skipOperatorDraft" },

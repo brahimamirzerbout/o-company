@@ -379,6 +379,10 @@ function extractSubject(draft: Draft): string | null {
   return null;
 }
 
+// Exported so the API's preview endpoint can render the email
+// exactly as the recipient would see it.
+export { extractSubject };
+
 function pickEmailTemplate(draft: Draft) {
   // Imported lazily so the bundle doesn't pull React Email into every call
   switch (draft.kind) {
@@ -394,3 +398,5 @@ function pickEmailTemplate(draft: Draft) {
     default:                       return MorningBriefingEmail;  // fallback
   }
 }
+
+export { pickEmailTemplate };
