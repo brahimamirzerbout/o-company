@@ -650,3 +650,15 @@ BEGIN
       t, t);
   END LOOP;
 END $$;
+
+-- === NAME: 002_rate_limit ===
+
+-- Rate limit hits, scoped by a key (route:userId or route:ip).
+-- The sliding-window limiter counts rows in the last N seconds for the
+-- given key. Rows older than 1 hour are periodically deleted.
+
+CREATE TABLE rate_limit_hits (
+  key         TEXT NOT NULL,
+  hit_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX rate_limit_hits_key_idx ON rate_limit_hits(key, hit_at DESC);

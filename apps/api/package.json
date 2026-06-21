@@ -40,6 +40,7 @@
     "@o/storage": "workspace:*",
     "@o/photo": "workspace:*",
     "@o/operator": "workspace:*",
+    "@o/ratelimit": "workspace:*",
     "@aws-sdk/client-s3": "3.700.0",
     "@aws-sdk/s3-request-presigner": "3.700.0",
     "zod": "3.23.8",

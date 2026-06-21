@@ -19,6 +19,7 @@ import { getStorage, buildKey } from "@o/storage";
 import { PRESETS, getPreset, PhotoVariationKind, VARIATION_KINDS } from "@o/photo";
 import { errors, AppError } from "@o/errors";
 import { logger } from "@o/logger";
+import { checkRateLimit, keyFromRequest } from "@o/ratelimit";
 import { randomUUID } from "crypto";
 
 // -----------------------------------------------------------------------------
@@ -78,6 +79,18 @@ const CreateJobSchema = z.object({
 });
 
 export const createJob = withAuth(async (ctx) => {
+  // Rate limit: 30 jobs per user per hour. A real photographer
+  // processes ~50 photos per session; 30/hour is well above normal
+  // use. The cost is real (each job hits Replicate). A 30/hour cap
+  // means a runaway script burns at most ~$20 of model time before
+  // the limit kicks in.
+  const limited = await checkRateLimit({
+    key: `photo:create:${ctx.person.id}`,
+    limit: 30,
+    windowSeconds: 60 * 60,
+  });
+  if (limited) return limited;
+
   const body = CreateJobSchema.parse(await ctx.req.json());
   const orgId = ctx.org.id;
   const userId = ctx.person.id;

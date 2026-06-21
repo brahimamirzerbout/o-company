@@ -23,6 +23,7 @@ import {
 } from "@o/operator/drafts";
 import { listActions, DRAFT_STATUSES } from "@o/operator";
 import { triggerEvent } from "@o/operator/runner";
+import { checkRateLimit, keyFromRequest } from "@o/ratelimit";
 import { errors } from "@o/errors";
 
 // -----------------------------------------------------------------------------
@@ -71,6 +72,18 @@ const ApproveSchema = z.object({
 });
 
 export const approveOperatorDraft = withAuth(async (ctx) => {
+  // Rate limit: 60 approvals per user per minute. The 60/min ceiling
+  // is far above what a real human would do; it exists to prevent a
+  // runaway client or a confused script from approving 1000 drafts in
+  // a second. The 5/min on /auth/login exists to stop attackers; this
+  // one exists to stop accidents.
+  const limited = await checkRateLimit({
+    key: `operator:approve:${ctx.person.id}`,
+    limit: 60,
+    windowSeconds: 60,
+  });
+  if (limited) return limited;
+
   const draftId = ctx.req.nextUrl.pathname.split("/").slice(-2, -1)[0]!;
   const body = ApproveSchema.parse(await ctx.req.json().catch(() => ({})));
   const draft = await approveDraft({

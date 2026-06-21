@@ -12,7 +12,8 @@
     "@o/operator": "workspace:*",
     "@o/email": "workspace:*",
     "@o/db": "workspace:*",
-    "@o/logger": "workspace:*"
+    "@o/logger": "workspace:*",
+    "@o/ratelimit": "workspace:*"
   },
   "devDependencies": {
     "tsx": "4.19.2",

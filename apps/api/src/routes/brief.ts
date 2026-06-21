@@ -20,6 +20,7 @@ import { getDb } from "@o/db/client";
 import { briefEntries, contacts } from "@o/db/schema";
 import { eq, and, desc, isNull, count } from "drizzle-orm";
 import { errors } from "@o/errors";
+import { checkRateLimit, keyFromRequest } from "@o/ratelimit";
 import { randomUUID } from "crypto";
 
 // -----------------------------------------------------------------------------
@@ -30,6 +31,16 @@ import { randomUUID } from "crypto";
 // the nav badge can render without a second request.
 
 export const getBrief = withAuth(async (ctx) => {
+  // Rate limit: 60 reads per user per minute. The brief inbox polls
+  // every 30s in the iOS app; 60/min is a 2x headroom over expected
+  // traffic and stops a runaway client or a scraper.
+  const limited = await checkRateLimit({
+    key: `brief:read:${ctx.person.id}`,
+    limit: 60,
+    windowSeconds: 60,
+  });
+  if (limited) return limited;
+
   const db = getDb();
 
   // Resolve the contact for this person. For a client, person.id ==
@@ -135,6 +146,16 @@ export const archiveEntry = withAuth(async (ctx) => {
 // -----------------------------------------------------------------------------
 
 export const markAllRead = withAuth(async (ctx) => {
+  // Rate limit: 10 mark-all-read per user per minute. The only legit
+  // reason to call this repeatedly is a bug or a user spamming the
+  // "mark all" button. 10/min is generous; anything above is hostile.
+  const limited = await checkRateLimit({
+    key: `brief:mark-all:${ctx.person.id}`,
+    limit: 10,
+    windowSeconds: 60,
+  });
+  if (limited) return limited;
+
   const db = getDb();
   const url = new URL(ctx.req.url);
   const contactId = url.searchParams.get("contactId") ?? ctx.person.id;

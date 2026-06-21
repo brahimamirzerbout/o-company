@@ -17,16 +17,21 @@
 //     in case the event was missed (network blip, worker restart, etc)
 
 import { runOneTick } from "@o/operator/runner";
+import { cleanup as rateLimitCleanup } from "@o/ratelimit";
 import { logger } from "@o/logger";
 
 const TICK_INTERVAL_MS = 5 * 60 * 1000;  // 5 minutes
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes (rate limit hits older than 1h are deleted)
 
 async function main() {
   logger.info("Operator worker starting", { tickIntervalMs: TICK_INTERVAL_MS });
   // First tick immediately
   await tick();
+  // First cleanup immediately
+  await cleanup();
   // Then on interval
   setInterval(tick, TICK_INTERVAL_MS);
+  setInterval(cleanup, CLEANUP_INTERVAL_MS);
 }
 
 async function tick() {
@@ -35,6 +40,15 @@ async function tick() {
     logger.info("Operator tick", result);
   } catch (err) {
     logger.error("Operator tick failed", { err: String(err) });
+  }
+}
+
+async function cleanup() {
+  try {
+    const result = await rateLimitCleanup();
+    logger.info("Rate-limit cleanup", result);
+  } catch (err) {
+    logger.error("Rate-limit cleanup failed", { err: String(err) });
   }
 }
 

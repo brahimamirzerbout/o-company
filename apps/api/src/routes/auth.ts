@@ -19,6 +19,7 @@ import { hashPassword, verifyPassword } from "@o/auth/password";
 import { signAccessToken, generateRefreshToken, hashRefreshToken } from "@o/auth/session";
 import { errors } from "@o/errors";
 import { withAuth } from "@/middleware/with-auth";
+import { checkRateLimit, keyFromRequest } from "@o/ratelimit";
 import { sendEmail } from "@o/email";
 import { EmailVerificationTemplate, PasswordResetTemplate } from "@o/email/templates";
 import { logger } from "@o/logger";
@@ -38,6 +39,15 @@ const registerSchema = z.object({
 });
 
 export const POST_register = withAuth(async (ctx, { body }) => {
+  // Rate limit: 3 new signups per IP per hour. Prevents mass-spam signups
+  // and email-bombing via the verification email.
+  const limited = await checkRateLimit({
+    key: keyFromRequest(ctx.req, "auth:register"),
+    limit: 3,
+    windowSeconds: 60 * 60,
+  });
+  if (limited) return limited;
+
   const parsed = registerSchema.safeParse(body);
   if (!parsed.success) throw errors.validation("Invalid input", { issues: parsed.error.issues });
   const data = parsed.data;
@@ -113,6 +123,18 @@ const loginSchema = z.object({
 });
 
 export const POST_login = withAuth(async (ctx, { body }) => {
+  // Rate limit: 5 attempts per IP per minute. This is the only
+  // protection against credential-stuffing and brute-force. The
+  // tutorial correctly identifies this as table-stakes; we add it
+  // to the only endpoint that can be hit by an unauthenticated
+  // attacker at scale.
+  const limited = await checkRateLimit({
+    key: keyFromRequest(ctx.req, "auth:login"),
+    limit: 5,
+    windowSeconds: 60,
+  });
+  if (limited) return limited;
+
   const parsed = loginSchema.safeParse(body);
   if (!parsed.success) throw errors.validation("Invalid input");
   const { email, password, orgSlug } = parsed.data;
