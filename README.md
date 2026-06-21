@@ -114,3 +114,20 @@ The Master Services Agreement, Data Processing Addendum, and Acceptable Use Poli
 - **Packages** (db, types, auth, money, crypto, payments, email, i18n, errors, logger, jobs, legal, obs) — MIT
 - **API server** — Business Source License 1.1 (source-available; converts to Apache 2.0 four years after each release)
 - **Brand** ("o.company" name and logo) — All rights reserved
+
+## The operator
+
+The AI parts of o.company (the `morning_briefing`, `deal_followup_draft`,
+`lead_score`, `invoice_reminder`, and 6 other actions) operate under a
+non-negotiable contract: **the AI drafts, the AI never sends.** Every
+external action goes through a human review at `/briefing`. There is no
+fully-autonomous mode. There is no agent mode. There is no
+auto-approval flag. This is by design.
+
+- **`TRUST_MODEL.md`** at the root — the one-paragraph version, where
+  the contract is enforced in code, and what you cannot do.
+- **`packages/operator/MANUAL.md`** — the full manual. Action set,
+  model choices, cost numbers, extension guide, non-goals, future.
+
+Read both before changing anything in `packages/operator/`,
+`apps/operator-worker/`, or the API routes that produce side effects.
