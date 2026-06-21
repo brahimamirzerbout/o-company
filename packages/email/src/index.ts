@@ -7,9 +7,24 @@
 //
 // We never BCC ourselves. We never add tracking pixels. Every link in every
 // email is a plain text link, no UTM tracking.
+//
+// MODES:
+//   - "real"   sends via Resend (production, or any env that has RESEND_API_KEY)
+//   - "log"    writes the rendered HTML to the logger (dev, no Resend key set)
+//   - "capture" also writes to a file in /tmp (useful for E2E tests)
+//
+// The mode is auto-detected from env:
+//   If RESEND_API_KEY is set: real
+//   Else if NODE_ENV === "production": error (no fallback in prod)
+//   Else: log
 
 import { Resend } from "resend";
+import { writeFileSync, mkdirSync } from "fs";
+import { join } from "path";
 import { renderTemplate, type TemplateProps, type TemplateName } from "./templates";
+import { logger } from "@o/logger";
+
+type EmailMode = "real" | "log" | "capture";
 
 let _resend: Resend | null = null;
 function resend(): Resend {
@@ -18,6 +33,13 @@ function resend(): Resend {
   if (!key) throw new Error("RESEND_API_KEY not set");
   _resend = new Resend(key);
   return _resend;
+}
+
+function detectMode(): EmailMode {
+  if (process.env.RESEND_API_KEY) return "real";
+  if (process.env.NODE_ENV === "production") return "real"; // Will fail loudly below
+  if (process.env.EMAIL_CAPTURE_DIR) return "capture";
+  return "log";
 }
 
 export interface SendEmailInput<T extends TemplateName> {
@@ -42,10 +64,41 @@ export async function sendEmail<T extends TemplateName>(input: SendEmailInput<T>
   const html = await renderTemplate(input.template, input.props);
   const subject = input.subject ?? defaultSubject(input.template, input.props);
   const from = input.from ?? `${process.env.EMAIL_FROM ?? "hello@o.company"}`;
+  const to = Array.isArray(input.to) ? input.to : [input.to];
 
+  const mode = detectMode();
+
+  if (mode === "log") {
+    // Dev mode without Resend. Log the email so you can see what would
+    // have been sent. The HTML is included so you can render it in your
+    // terminal (or pipe to a file for inspection).
+    logger.info("email.send.log_mode", {
+      mode,
+      to,
+      from,
+      subject,
+      template: input.template,
+      htmlLength: html.length,
+      preview: html.slice(0, 200),
+    });
+    return { id: `log_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` };
+  }
+
+  if (mode === "capture") {
+    // E2E test mode. Writes the rendered HTML to a file so the test
+    // can assert against it.
+    const dir = process.env.EMAIL_CAPTURE_DIR!;
+    mkdirSync(dir, { recursive: true });
+    const filename = `${input.template}_${Date.now()}.html`;
+    writeFileSync(join(dir, filename), html, "utf-8");
+    logger.info("email.send.capture_mode", { mode, to, from, subject, template: input.template, file: filename });
+    return { id: `capture_${filename}` };
+  }
+
+  // mode === "real"
   const result = await resend().emails.send({
     from,
-    to: Array.isArray(input.to) ? input.to : [input.to],
+    to,
     subject,
     html,
     replyTo: input.replyTo ?? process.env.EMAIL_REPLY_TO,
