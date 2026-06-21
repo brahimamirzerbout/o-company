@@ -45,6 +45,9 @@ const TABLE: Record<string, keyof typeof routes> = {
   "GET  /api/brief/unread":          "getUnread",
   "POST /api/brief/mark-all-read":   "markAllRead",
   "POST /api/brief/test-fire":       "testFire",
+  "POST /api/payments/checkout":     "POST_checkout",
+  "POST /api/payments/refund":       "POST_refund",
+  "POST /api/payments/portal":       "POST_portal",
 };
 const ID_TAIL: Record<string, { method: string; handler: keyof typeof routes }> = {
   "GET  /api/people":          { method: "GET",    handler: "GET_person" },
@@ -70,7 +73,9 @@ const ID_TAIL: Record<string, { method: string; handler: keyof typeof routes }> 
   "POST /api/invoices/send":   { method: "POST",   handler: "POST_invoice_send" },
   "POST /api/invoices/pay/stripe": { method: "POST", handler: "POST_invoice_pay_stripe" },
   "POST /api/invoices/pay/crypto": { method: "POST", handler: "POST_invoice_pay_crypto" },
-  "POST /api/webhooks/stripe":  { method: "POST",   handler: "POST_stripe_webhook" },
+  // NOTE: POST /api/webhooks/stripe is handled by the dedicated route at
+  // /app/api/webhooks/stripe/route.ts (signature verification needs raw
+  // body, which the catch-all dispatcher can't provide).
   "GET  /api/tickets":         { method: "GET",    handler: "GET_ticket" },
   "POST /api/tickets/reply":   { method: "POST",   handler: "POST_ticket_reply" },
   "POST /api/tickets/resolve": { method: "POST",   handler: "POST_ticket_resolve" },
@@ -103,9 +108,10 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<Record<str
 async function dispatch(method: string, req: NextRequest, ctx: { params: Promise<Record<string, string>> }) {
   const params = await ctx.params;
   const segments = req.nextUrl.pathname.split("/").filter(Boolean);
-  // Health check
+  // Health check is handled by the dedicated route at
+  // /app/api/health/route.ts. This catch-all should not shadow it.
   if (segments.length === 2 && segments[0] === "api" && segments[1] === "health") {
-    return new Response(JSON.stringify({ ok: true, ts: new Date().toISOString() }), { headers: { "content-type": "application/json" } });
+    return new Response(JSON.stringify({ error: { code: "RES_001", message: "Use /app/api/health/route.ts" } }), { status: 404, headers: { "content-type": "application/json" } });
   }
   // Try exact match
   const key = `${method} ${req.nextUrl.pathname}`;
