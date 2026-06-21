@@ -38,6 +38,8 @@ export interface LoadResult {
   total: number;
   successful: number;       // 2xx
   rateLimited: number;      // 429
+  clientErr: number;        // 4xx (not 429)
+  serverErr: number;        // 5xx
   failed: number;           // 4xx other than 429, 5xx, network
   durationMs: number;
   rps: number;
@@ -68,6 +70,8 @@ export async function runLoad(config: LoadConfig): Promise<LoadResult> {
   const statusBreakdown: Record<number, number> = {};
   let successful = 0;
   let rateLimited = 0;
+  let clientErr = 0;
+  let serverErr = 0;
   let failed = 0;
 
   // Build the queue
@@ -104,7 +108,11 @@ export async function runLoad(config: LoadConfig): Promise<LoadResult> {
           successful++;
         } else if (res.status === 429) {
           rateLimited++;
+        } else if (res.status >= 500) {
+          serverErr++;
+          failed++;
         } else {
+          clientErr++;
           failed++;
         }
       } catch (err) {
@@ -134,6 +142,8 @@ export async function runLoad(config: LoadConfig): Promise<LoadResult> {
     total: config.total,
     successful,
     rateLimited,
+    clientErr,
+    serverErr,
     failed,
     durationMs,
     rps: Math.round((config.total / durationMs) * 1000),
@@ -177,6 +187,8 @@ export function formatReport(r: LoadResult): string {
   lines.push(`Total:        ${r.total} requests in ${r.durationMs}ms (${r.rps} rps)`);
   lines.push(`Successful:   ${r.successful}`);
   lines.push(`Rate-limited: ${r.rateLimited}`);
+  lines.push(`Client err:   ${r.clientErr}    (4xx other than 429)`);
+  lines.push(`Server err:   ${r.serverErr}    (5xx — should be 0 in healthy test)`);
   lines.push(`Failed:       ${r.failed}`);
   lines.push(`Latency:      p50=${r.latencyMs.p50}ms p95=${r.latencyMs.p95}ms p99=${r.latencyMs.p99}ms max=${r.latencyMs.max}ms min=${r.latencyMs.min}ms`);
   lines.push(`Status codes:`);
@@ -195,16 +207,20 @@ export function formatReport(r: LoadResult): string {
  * Asserts that the result passes a basic bar.
  * Returns a list of failures (empty if the result is OK).
  */
-export function assertPasses(r: LoadResult, opts: { maxFailureRate?: number; maxP99Ms?: number; expectRateLimit?: boolean }): string[] {
+export function assertPasses(r: LoadResult, opts: { maxFailureRate?: number; maxP99Ms?: number; expectRateLimit?: boolean; maxServerErr?: number }): string[] {
   const failures: string[] = [];
   const maxFailureRate = opts.maxFailureRate ?? 0.1;  // 10% by default
   const maxP99Ms = opts.maxP99Ms ?? 5000;
+  const maxServerErr = opts.maxServerErr ?? Infinity;
   const failureRate = r.failed / r.total;
   if (failureRate > maxFailureRate) {
     failures.push(`Failure rate ${(failureRate * 100).toFixed(1)}% exceeds ${(maxFailureRate * 100).toFixed(1)}%`);
   }
   if (r.latencyMs.p99 > maxP99Ms) {
     failures.push(`p99 latency ${r.latencyMs.p99}ms exceeds ${maxP99Ms}ms`);
+  }
+  if (r.serverErr > maxServerErr) {
+    failures.push(`Server errors ${r.serverErr} exceeds ${maxServerErr}`);
   }
   if (opts.expectRateLimit && r.rateLimited === 0) {
     failures.push("Expected rate limiting to kick in; got 0 rate-limited responses");
