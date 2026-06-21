@@ -5,6 +5,16 @@ import Foundation
 // =============================================================================
 // Used when there's no authenticated session. Mirrors the structure of the
 // real API responses so the UI looks and behaves the same.
+//
+// PRODUCTION GUARD: this file is only compiled into DEBUG builds. The
+// `LoginView` wraps the "use mock session" button in `#if DEBUG` so the
+// entry point is gone. To be doubly safe, the call sites in `MockData.*`
+// functions are not exposed; the view models decide whether to call them
+// based on `APIClient.shared.isAuthenticated`.
+//
+// If you find yourself importing `MockData` outside of a view model's
+// "if !isAuthenticated" branch, you're shipping dev data to production.
+// Don't.
 
 public enum MockData {
     public static func briefFeed() -> [BriefGroup] {

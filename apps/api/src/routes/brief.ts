@@ -183,6 +183,13 @@ export const markAllRead = withAuth(async (ctx) => {
 // creates a contact for the calling person on the fly.
 
 export const testFire = requireRole("admin", async (ctx, { body }) => {
+  // Production guard: test-fire is a dev tool. It writes 6 mock entries
+  // to the real DB. In production this would show fake data to real
+  // customers. Refuse to run unless ALLOW_TEST_ROUTES is set.
+  if (process.env.NODE_ENV === "production" && process.env.ALLOW_TEST_ROUTES !== "true") {
+    throw errors.validation("test-fire is not available in production");
+  }
+
   const data = TestFireSchema.parse(body);
   const db = getDb();
   const orgId = ctx.org.id;
