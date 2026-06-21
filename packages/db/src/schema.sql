@@ -742,3 +742,18 @@ CREATE INDEX lead_form_submissions_contact_idx ON lead_form_submissions(contact_
 -- delete + audit_event.
 ALTER TABLE deals ADD COLUMN deleted_at TIMESTAMPTZ;
 CREATE INDEX deals_org_active_idx ON deals(org_id) WHERE deleted_at IS NULL;
+
+-- === NAME: 008_deal_outcomes ===
+
+-- The strategy doc talked about "win/loss analysis" — knowing
+-- why deals close (or don't) is the difference between
+-- improving the pipeline and just watching it. We add two
+-- text columns to deals. They are populated when the deal
+-- moves to 'won' or 'lost'. Free-form text; structured
+-- categories are a v2.
+ALTER TABLE deals ADD COLUMN win_reason TEXT;
+ALTER TABLE deals ADD COLUMN loss_reason TEXT;
+
+-- Partial index for the "what makes us win" report.
+CREATE INDEX deals_won_reasons_idx ON deals(org_id, win_reason)
+  WHERE stage = 'won' AND deleted_at IS NULL;

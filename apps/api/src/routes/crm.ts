@@ -258,6 +258,10 @@ const dealSchema = z.object({
   probability: z.number().min(0).max(1).default(0.1),
   expectedCloseDate: z.string(), // ISO date
   description: z.string().optional(),
+  // Win/loss reasons. Required when stage is won/lost, ignored
+  // otherwise. Free-form text; structured categories are a v2.
+  winReason: z.string().max(1000).optional(),
+  lossReason: z.string().max(1000).optional(),
 });
 
 export const GET_deals = withAuth(async (ctx) => {
@@ -315,6 +319,17 @@ export const POST_deals = withAuth(async (ctx, { body }) => {
     if (!company) throw errors.notFound("Company");
   }
 
+  // Win/loss reasons on direct create: a deal shouldn't be born at
+  // "won" without a reason (that's data corruption; a deal is won
+  // by moving it through stages). If someone tries to create a
+  // deal directly in a terminal state, require a reason.
+  if (parsed.data.stage === "won" && !parsed.data.winReason) {
+    throw errors.validation("winReason is required when creating a deal in 'won' stage");
+  }
+  if (parsed.data.stage === "lost" && !parsed.data.lossReason) {
+    throw errors.validation("lossReason is required when creating a deal in 'lost' stage");
+  }
+
   const [created] = await db.insert(deals).values({
     orgId: ctx.org.id,
     ownerId: ctx.person.id,
@@ -338,12 +353,57 @@ export const PATCH_deal = withAuth(async (ctx, { body }) => {
   requirePermission(ctx.person, "deals:write");
   const parsed = dealSchema.partial().safeParse(body);
   if (!parsed.success) throw errors.validation("Invalid input");
-  // If stage changes, also reset stageChangedAt
   const db = getDb();
+
+  // Win/loss reasons: when the deal moves to "won" or "lost", the
+  // reason is required (the strategy doc called this "win/loss
+  // analysis" — knowing why we win is the difference between
+  // improving the pipeline and just watching it). On any other
+  // stage, the reason fields are ignored.
+  if (parsed.data.stage === "won" && !parsed.data.winReason) {
+    throw errors.validation("winReason is required when moving a deal to 'won'");
+  }
+  if (parsed.data.stage === "lost" && !parsed.data.lossReason) {
+    throw errors.validation("lossReason is required when moving a deal to 'lost'");
+  }
+
+  // If stage changes, also reset stageChangedAt and set closedAt
+  // for terminal stages (won, lost).
   const updates: Record<string, unknown> = { ...parsed.data, updatedAt: new Date() };
-  if (parsed.data.stage) updates.stageChangedAt = new Date();
+  if (parsed.data.stage) {
+    updates.stageChangedAt = new Date();
+    if (parsed.data.stage === "won" || parsed.data.stage === "lost") {
+      updates.closedAt = new Date();
+    }
+  }
   const [updated] = await db.update(deals).set(updates).where(and(eq(deals.id, id), eq(deals.orgId, ctx.org.id), isNull(deals.deletedAt))).returning();
   if (!updated) throw errors.notFound("Deal");
+
+  // Audit log on stage change (only on terminal states — we already
+  // audit deletes; this covers closes).
+  if (parsed.data.stage === "won" || parsed.data.stage === "lost") {
+    try {
+      const { auditEvents } = await import("@o/db/schema");
+      await db.insert(auditEvents).values({
+        id: crypto.randomUUID(),
+        orgId: ctx.org.id,
+        actorId: ctx.person.id,
+        action: parsed.data.stage === "won" ? "deal.won" : "deal.lost",
+        subjectType: "deal",
+        subjectId: id,
+        after: {
+          name: updated.name,
+          amountCents: updated.amountCents,
+          stage: updated.stage,
+          winReason: updated.winReason,
+          lossReason: updated.lossReason,
+        },
+        ipAddress: ctx.req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+        userAgent: ctx.req.headers.get("user-agent") ?? null,
+      });
+    } catch { /* best-effort */ }
+  }
+
   return NextResponse.json(updated);
 });
 

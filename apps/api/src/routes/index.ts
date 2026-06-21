@@ -21,3 +21,4 @@ export { DELETE_gdpr, GET_export } from "./gdpr";
 export { GET_audit_log, GET_audit_event } from "./audit";
 export { POST_lead_form_submit } from "./lead-forms";
 export { GET_contact_timeline } from "./contact-timeline";
+export { GET_deal_insights } from "./deal-insights";

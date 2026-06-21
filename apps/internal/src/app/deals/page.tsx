@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { PageHeader, Card, Pill, Button, Input } from "@o/ui";
+import { PageHeader, Card, Pill, Button, Input, Stat } from "@o/ui";
 import { Plus, GripVertical } from "lucide-react";
 
 interface Deal { id: string; name: string; contact: string; amount: number; stage: string }
@@ -33,6 +33,7 @@ export default function DealsPage() {
         subtitle="Drag deals between stages · probability-weighted forecast"
         action={<Button><Plus className="h-4 w-4" /> New deal</Button>}
       />
+      <PipelineHealth />
       <div className="grid gap-4 lg:grid-cols-5">
         {STAGES.map((s) => {
           const stageDeals = SAMPLE.filter((d) => d.stage === s.id);
@@ -68,6 +69,78 @@ export default function DealsPage() {
           );
         })}
       </div>
+    </>
+  );
+}
+
+// =============================================================================
+// Pipeline health strip
+// =============================================================================
+// Shows the headline numbers a sales lead looks at first:
+//   - Total open value (sum of amountCents for open deals)
+//   - Weighted value (sum of amount * probability)
+//   - Stale deals (open deals not touched in 14+ days) — the "going cold" signal
+//   - About to close (open deals expected to close in the next 7 days)
+//   - Closed this month (count and value)
+// All numbers come from GET /api/crm/deals/insights.
+
+function PipelineHealth() {
+  const [data, setData] = React.useState<null | {
+    pipelineHealth: {
+      stale: number;
+      aboutToClose: number;
+      totalOpenValueCents: number;
+      weightedValueCents: number;
+    };
+    closedThisMonth: { count: number; totalCents: number };
+    winsByReason: { reason: string; count: number; totalCents: number }[];
+    lossesByReason: { reason: string; count: number; totalCents: number }[];
+  }>(null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    fetch("/api/crm/deals/insights")
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => setData(d))
+      .catch((e) => setError(String(e)));
+  }, []);
+
+  if (error) {
+    return <div className="mb-4 text-sm text-cream3">Pipeline health unavailable.</div>;
+  }
+  if (!data) {
+    return <div className="mb-4 h-20 bg-ink2 border border-ink3 rounded-md animate-pulse-soft" />;
+  }
+
+  const { pipelineHealth, closedThisMonth, winsByReason, lossesByReason } = data;
+  const topWin = winsByReason[0];
+  const topLoss = lossesByReason[0];
+
+  return (
+    <>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5 mb-6">
+        <Stat label="Open value"          value={fmt(pipelineHealth.totalOpenValueCents)} sub="across all open deals" />
+        <Stat label="Weighted forecast"   value={fmt(pipelineHealth.weightedValueCents)} sub="amount × probability" />
+        <Stat label="Stale deals"         value={String(pipelineHealth.stale)} sub="untouched 14+ days" tone={pipelineHealth.stale > 0 ? "warning" : "neutral"} />
+        <Stat label="About to close"      value={String(pipelineHealth.aboutToClose)} sub="expected in 7 days" />
+        <Stat label="Closed this month"   value={fmt(closedThisMonth.totalCents)} sub={`${closedThisMonth.count} deals`} tone="success" />
+      </div>
+      {(topWin || topLoss) && (
+        <div className="mb-6 grid gap-3 lg:grid-cols-2">
+          {topWin && (
+            <Card title="Why we win" description="Top reason deals close won">
+              <p className="text-sm text-cream2">"{topWin.reason}"</p>
+              <p className="mt-1 text-xs text-cream3">{topWin.count} deals · {fmt(topWin.totalCents)}</p>
+            </Card>
+          )}
+          {topLoss && (
+            <Card title="Why we lose" description="Top reason deals close lost">
+              <p className="text-sm text-cream2">"{topLoss.reason}"</p>
+              <p className="mt-1 text-xs text-cream3">{topLoss.count} deals · {fmt(topLoss.totalCents)}</p>
+            </Card>
+          )}
+        </div>
+      )}
     </>
   );
 }

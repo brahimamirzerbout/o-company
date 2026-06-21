@@ -227,11 +227,14 @@ export const deals = pgTable("deals", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   closedAt: timestamp("closed_at", { withTimezone: true }),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  winReason: text("win_reason"),
+  lossReason: text("loss_reason"),
 }, (t) => ({
   stageIdx: index("deals_stage_idx").on(t.orgId, t.stage),
   closeIdx: index("deals_close_idx").on(t.orgId, t.expectedCloseDate),
   ownerIdx: index("deals_owner_idx").on(t.orgId, t.ownerId),
   activeIdx: index("deals_org_active_idx").on(t.orgId).where(sql`${t.deletedAt} IS NULL`),
+  wonReasonsIdx: index("deals_won_reasons_idx").on(t.orgId, t.winReason).where(sql`${t.stage} = 'won' AND ${t.deletedAt} IS NULL`),
 }));
 
 export const projects = pgTable("projects", {
