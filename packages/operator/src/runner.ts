@@ -27,7 +27,48 @@ import {
   runProjectCloseout, runWeeklyClientDigest,
 } from "./actions";
 import { saveDraft, sendApprovedDrafts } from "./drafts";
-import { getDb } from "@o/db/client";
+
+// -----------------------------------------------------------------------------
+// LLM rate-limit backoff
+// -----------------------------------------------------------------------------
+// When the LLM provider (OpenAI) returns 429, the runner backs off
+// for a short window. Subsequent ticks within that window skip the
+// LLM-calling actions entirely. This is the global version of the
+// per-call retry in llm.ts: even with per-call retries, a 429 means
+// we've exhausted the per-call budget, so we should stop calling
+// the API for a while, not just retry.
+//
+// The backoff is exponential: 30s after the first 429, 60s after
+// the second consecutive 429, capped at 5 minutes. Resets to 0
+// after a successful tick (no 429s).
+
+let backoffUntil = 0;  // ms epoch; 0 means "no backoff"
+let consecutiveFailures = 0;
+
+const BACKOFF_INITIAL_MS = 30_000;
+const BACKOFF_MAX_MS = 5 * 60_000;
+
+function isRateLimitError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  // OpenAI errors have a `status` property
+  const e = err as { status?: number; code?: string; message?: string };
+  if (e.status === 429) return true;
+  if (e.code === "rate_limit_exceeded") return true;
+  if (typeof e.message === "string" && /rate.?limit|429|too many requests/i.test(e.message)) return true;
+  return false;
+}
+
+function recordBackoff(): number {
+  consecutiveFailures++;
+  const backoff = Math.min(BACKOFF_INITIAL_MS * Math.pow(2, consecutiveFailures - 1), BACKOFF_MAX_MS);
+  backoffUntil = Date.now() + backoff;
+  return backoff;
+}
+
+function clearBackoff(): void {
+  consecutiveFailures = 0;
+  backoffUntil = 0;
+}import { getDb } from "@o/db/client";
 import { operatorDrafts, orgs, people, photoJobs, deals, contacts, invoices } from "@o/db/schema";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
 import { logger } from "@o/logger";
@@ -50,16 +91,37 @@ export async function runOneTick(): Promise<{ ran: number; draftsCreated: number
     errors++;
   }
 
+  // Are we in an LLM rate-limit backoff?
+  const inBackoff = backoffUntil > Date.now();
+
   // Then: for each action, check if it should run for any org
   for (const action of listActions()) {
+    if (inBackoff && action.requiresApproval) {
+      // Skip LLM-calling actions while in backoff
+      continue;
+    }
     try {
       const created = await maybeRunAction(action.kind);
       draftsCreated += created;
       ran++;
     } catch (err) {
       logger.error(`Action ${action.kind} failed`, { err: String(err) });
+      if (isRateLimitError(err)) {
+        const backoff = recordBackoff();
+        logger.warn("operator.llm_rate_limited", {
+          backoffMs: backoff,
+          backoffUntil: new Date(backoffUntil).toISOString(),
+          consecutiveFailures,
+        });
+      }
       errors++;
     }
+  }
+
+  // If we got through the whole tick without a 429, clear the backoff
+  if (consecutiveFailures > 0 && !inBackoff) {
+    logger.info("operator.llm_backoff_cleared", { previousFailures: consecutiveFailures });
+    clearBackoff();
   }
 
   logger.info("Operator tick complete", {
@@ -68,6 +130,8 @@ export async function runOneTick(): Promise<{ ran: number; draftsCreated: number
     draftsCreated,
     draftsSent,
     errors,
+    inBackoff: inBackoff,
+    backoffUntilMs: backoffUntil > Date.now() ? backoffUntil - Date.now() : 0,
   });
 
   return { ran, draftsCreated, draftsSent, errors };
