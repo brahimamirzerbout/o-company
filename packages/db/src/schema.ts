@@ -596,3 +596,108 @@ export const photoJobRelations = relations(photoJobs, ({ one, many }) => ({
 export const photoVariationRelations = relations(photoVariations, ({ one }) => ({
   job: one(photoJobs, { fields: [photoVariations.jobId], references: [photoJobs.id] }),
 }));
+
+// =============================================================================
+// Operator (the AI action system)
+// =============================================================================
+// Every action the operator takes produces a draft. A draft is a message
+// or decision that needs human review. Approve = it executes. Reject = it
+// doesn't, and the rejection is logged for the learning loop.
+
+export const operatorDraftStatusEnum = pgEnum("operator_draft_status", [
+  "pending", "approved", "edited", "rejected", "sent", "skipped", "failed",
+]);
+
+export const operatorDraftChannelEnum = pgEnum("operator_draft_channel", [
+  "email", "sms", "in_app", "task", "score", "route",
+]);
+
+export const operatorDraftKindEnum = pgEnum("operator_draft_kind", [
+  "morning_briefing", "deal_followup_draft", "lead_score",
+  "invoice_reminder", "photo_progress_ping", "client_brief_summary",
+]);
+
+export const operatorDrafts = pgTable("operator_drafts", {
+  id:            text("id").primaryKey(),                     // opd_<uuid>
+  orgId:         uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+
+  kind:          operatorDraftKindEnum("kind").notNull(),
+  channel:       operatorDraftChannelEnum("channel").notNull(),
+  status:        operatorDraftStatusEnum("status").notNull().default("pending"),
+
+  // What this draft is about (polymorphic)
+  subjectType:   text("subject_type").notNull(),              // "deal" | "contact" | ...
+  subjectId:     text("subject_id").notNull(),
+
+  // Who needs to approve it
+  assigneeId:    uuid("assignee_id").notNull().references(() => people.id),
+  approverId:    uuid("approver_id").references(() => people.id),
+
+  // What we drafted
+  title:         text("title").notNull(),
+  body:          text("body").notNull(),                      // markdown
+  context:       jsonb("context").$type<Record<string, unknown>>().notNull().default({}),
+  reasoning:     text("reasoning").notNull(),                 // shown in UI: why the AI drafted this
+
+  // The model cost
+  modelUsed:     text("model_used").notNull(),
+  promptTokens:  integer("prompt_tokens").notNull().default(0),
+  completionTokens: integer("completion_tokens").notNull().default(0),
+  costUsd:       real("cost_usd").notNull().default(0),
+
+  // Approval
+  approvedAt:    timestamp("approved_at", { withTimezone: true }),
+  approvedBy:    uuid("approved_by").references(() => people.id),
+  editedBody:    text("edited_body"),
+
+  // Send
+  sentAt:        timestamp("sent_at", { withTimezone: true }),
+  sendError:     text("send_error"),
+
+  // Feedback for the learning loop
+  feedbackScore: integer("feedback_score"),                   // -1, 0, +1
+  feedbackNote:  text("feedback_note"),
+
+  createdAt:     timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:     timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  expiresAt:     timestamp("expires_at", { withTimezone: true }),
+}, (t) => ({
+  orgIdx:         index("operator_drafts_org_idx").on(t.orgId),
+  statusIdx:      index("operator_drafts_status_idx").on(t.status),
+  assigneeIdx:    index("operator_drafts_assignee_idx").on(t.assigneeId),
+  subjectIdx:     index("operator_drafts_subject_idx").on(t.subjectType, t.subjectId),
+  kindIdx:        index("operator_drafts_kind_idx").on(t.kind),
+  createdIdx:     index("operator_drafts_created_idx").on(t.createdAt),
+}));
+
+export const operatorDraftRelations = relations(operatorDrafts, ({ one }) => ({
+  org: one(orgs, { fields: [operatorDrafts.orgId], references: [orgs.id] }),
+  assignee: one(people, { fields: [operatorDrafts.assigneeId], references: [people.id] }),
+  approver: one(people, { fields: [operatorDrafts.approverId], references: [people.id] }),
+}));
+
+// =============================================================================
+// Audit log for the learning loop
+// =============================================================================
+// Every approved/rejected/edit decision is recorded here. After 50+
+// decisions on the same kind, the morning briefing action uses these
+// examples to refine its prompt.
+
+export const operatorFeedback = pgTable("operator_feedback", {
+  id:            text("id").primaryKey(),
+  orgId:         uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+  draftId:       text("draft_id").notNull().references(() => operatorDrafts.id, { onDelete: "cascade" }),
+  kind:          operatorDraftKindEnum("kind").notNull(),
+  decision:      text("decision").notNull(),                  // "approved" | "rejected" | "edited"
+  originalBody:  text("original_body").notNull(),
+  finalBody:     text("final_body"),
+  reason:        text("reason"),
+  // Embedding of the original prompt — used for similarity lookup at draft time
+  // (filled in by a separate job; left nullable for now)
+  promptEmbedding: jsonb("prompt_embedding").$type<number[] | null>(),
+  decidedAt:     timestamp("decided_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  orgIdx:      index("operator_feedback_org_idx").on(t.orgId),
+  kindIdx:     index("operator_feedback_kind_idx").on(t.kind),
+  decidedIdx:  index("operator_feedback_decided_idx").on(t.decidedAt),
+}));

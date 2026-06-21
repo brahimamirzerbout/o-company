@@ -38,6 +38,9 @@ const TABLE: Record<string, keyof typeof routes> = {
   "POST /api/photos/jobs":           "createJob",
   "GET  /api/photos/jobs":           "listJobs",
   "GET  /api/photos/presets":        "listPresets",
+  "GET  /api/operator/drafts":       "listOperatorDrafts",
+  "GET  /api/operator/stats":        "operatorStats",
+  "POST /api/operator/tick":         "tickOperator",
 };
 const ID_TAIL: Record<string, { method: string; handler: keyof typeof routes }> = {
   "GET  /api/people":          { method: "GET",    handler: "GET_person" },
@@ -69,6 +72,10 @@ const ID_TAIL: Record<string, { method: string; handler: keyof typeof routes }> 
   "POST /api/tickets/resolve": { method: "POST",   handler: "POST_ticket_resolve" },
   "GET  /api/photos/jobs/:id":       { method: "GET",    handler: "getJob" },
   "POST /api/photos/jobs/:id/status": { method: "POST", handler: "updateStatus" },
+  "GET  /api/operator/drafts/:id":   { method: "GET",    handler: "getOperatorDraft" },
+  "POST /api/operator/drafts/:id/approve": { method: "POST", handler: "approveOperatorDraft" },
+  "POST /api/operator/drafts/:id/reject":  { method: "POST", handler: "rejectOperatorDraft" },
+  "POST /api/operator/drafts/:id/skip":    { method: "POST", handler: "skipOperatorDraft" },
 };
 
 export async function GET(req: NextRequest, ctx: { params: Promise<Record<string, string>> }) {

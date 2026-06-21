@@ -13,3 +13,4 @@ export { GET_projects, POST_projects, GET_project, PATCH_project, DELETE_project
 export { GET_invoices, POST_invoices, GET_invoice, POST_invoice_send, POST_invoice_pay_stripe, POST_invoice_pay_crypto, POST_stripe_webhook } from "./invoices";
 export { GET_tickets, POST_tickets, GET_ticket, POST_ticket_reply, POST_ticket_resolve } from "./tickets";
 export { uploadUrl, createJob, listJobs, getJob, updateStatus, listPresets } from "./photos";
+export { listOperatorDrafts, getOperatorDraft, approveOperatorDraft, rejectOperatorDraft, skipOperatorDraft, operatorStats, tickOperator } from "./operator";

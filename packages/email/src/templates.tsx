@@ -536,6 +536,74 @@ export function WelcomeTemplate({ orgName, firstName, portalUrl, tourUrl }: Welc
 }
 
 // =============================================================================
+// Operator-drafted email wrappers
+// =============================================================================
+// These are used for the operator's drafts. They wrap the AI's drafted
+// body in a brand-consistent email frame. The "drafted by the operator"
+// line tells the recipient the email was AI-assisted (transparency) and
+// gives them a way to opt out.
+
+import { marked } from "marked";
+
+export interface OperatorDraftedEmailProps {
+  subject: string;
+  body: string;             // markdown
+  preview: string;          // preheader / preview text (the AI's reasoning)
+  draftId: string;          // for tracking
+  recipientName?: string;
+  senderName?: string;
+  optOutUrl?: string;
+}
+
+function baseDraftedEmail(props: OperatorDraftedEmailProps, accent: string, ctaLabel: string, ctaHref: string) {
+  const html = marked.parse(props.body) as string;
+  return (
+    <Email preview={props.preview}>
+      <Text style={{ color: COLORS.accent, fontSize: "11px", letterSpacing: "0.2em", textTransform: "uppercase", margin: "0 0 8px" }}>
+        Drafted by the operator · {accent}
+      </Text>
+      <Heading style={{ color: COLORS.cream, fontWeight: 400, fontFamily: "'Instrument Serif', Georgia, serif", fontSize: "26px", margin: "0 0 16px" }}>
+        {props.subject}
+      </Heading>
+      <div
+        style={{ color: COLORS.cream2, fontSize: "15px", lineHeight: "24px" }}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      <Section style={{ textAlign: "center", margin: "32px 0" }}>
+        <Link href={ctaHref} style={{ backgroundColor: COLORS.accent, color: COLORS.ink, padding: "12px 32px", fontSize: "14px", fontWeight: 600, textDecoration: "none", borderRadius: "2px", display: "inline-block" }}>
+          {ctaLabel}
+        </Link>
+      </Section>
+      {props.optOutUrl && (
+        <Text style={{ color: COLORS.cream3, fontSize: "11px", textAlign: "center", margin: "16px 0 0" }}>
+          This message was drafted by an AI operator. <Link href={props.optOutUrl} style={{ color: COLORS.cream3, textDecoration: "underline" }}>Opt out of AI-drafted messages</Link>.
+        </Text>
+      )}
+    </Email>
+  );
+}
+
+export interface MorningBriefingEmailProps extends OperatorDraftedEmailProps {}
+export function MorningBriefingEmail(props: MorningBriefingEmailProps) {
+  return baseDraftedEmail(props, "morning brief", "Open dashboard", props.optOutUrl ?? "https://app.o.company");
+}
+
+export interface DealFollowupEmailProps extends OperatorDraftedEmailProps {}
+export function DealFollowupEmail(props: DealFollowupEmailProps) {
+  return baseDraftedEmail(props, "follow-up draft", "View in CRM", props.optOutUrl ?? "https://app.o.company/deals");
+}
+
+export interface InvoiceReminderEmailProps extends OperatorDraftedEmailProps {}
+export function InvoiceReminderEmail(props: InvoiceReminderEmailProps) {
+  return baseDraftedEmail(props, "invoice reminder", "Pay invoice", props.optOutUrl ?? "https://app.o.company/invoices");
+}
+
+export interface PhotoReadyEmailProps extends OperatorDraftedEmailProps {}
+export function PhotoReadyEmail(props: PhotoReadyEmailProps) {
+  return baseDraftedEmail(props, "photos ready", "View variations", props.optOutUrl ?? "https://app.o.company/photos");
+}
+
+// =============================================================================
 // Template registry
 // =============================================================================
 
@@ -551,6 +619,11 @@ export const TEMPLATES = {
   email_verification: EmailVerificationTemplate,
   payment_received:  PaymentReceivedTemplate,
   welcome:           WelcomeTemplate,
+  // Operator-drafted wrappers
+  operator_morning_briefing: MorningBriefingEmail,
+  operator_deal_followup:     DealFollowupEmail,
+  operator_invoice_reminder:  InvoiceReminderEmail,
+  operator_photo_ready:       PhotoReadyEmail,
 } as const;
 
 export type TemplateName = keyof typeof TEMPLATES;

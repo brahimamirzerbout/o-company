@@ -1,0 +1,21 @@
+{
+  "name": "@o/operator-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node --import tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@o/operator": "workspace:*",
+    "@o/email": "workspace:*",
+    "@o/db": "workspace:*",
+    "@o/logger": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "4.19.2",
+    "typescript": "5.6.3"
+  }
+}
