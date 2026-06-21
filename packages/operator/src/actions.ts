@@ -545,11 +545,15 @@ ${contact.notes ?? "(no notes)"}
 
 Return JSON with subject, body (60-100 words, markdown), and reasoning.`;
 
-  const result = await callStructured({
+  const result = await withLearning<z.infer<typeof LeadReengagementSchema>>({
     model: pickModel("draft"),
     system, user,
     schema: LeadReengagementSchema,
     schemaName: "LeadReengagement",
+    kind: "lead_reengagement",
+    subjectType: "contact",
+    context: { daysSinceActivity, lastNote: contact.notes?.slice(0, 100) },
+    orgId,
   });
 
   return draftFromStructuredResult({
@@ -629,11 +633,15 @@ ${JSON.stringify(recentTime, null, 2)}
 
 Return JSON with subject, body (150-250 words, markdown), and reasoning.`;
 
-  const result = await callStructured({
+  const result = await withLearning<z.infer<typeof ProjectKickoffSchema>>({
     model: pickModel("summary"),
     system, user,
     schema: ProjectKickoffSchema,
     schemaName: "ProjectKickoff",
+    kind: "project_kickoff",
+    subjectType: "project",
+    context: { service: project.service, value: project.value, milestoneCount: projectMilestones.length },
+    orgId,
   });
 
   return draftFromStructuredResult({
@@ -780,11 +788,15 @@ ${unpaid.length > 0 ? `⚠️  ${unpaid.length} unpaid invoice(s) totaling $${un
 
 Return JSON with subject, body (150-300 words, markdown), and reasoning.`;
 
-  const result = await callStructured({
+  const result = await withLearning<z.infer<typeof ProjectCloseoutSchema>>({
     model: pickModel("summary"),
     system, user,
     schema: ProjectCloseoutSchema,
     schemaName: "ProjectCloseout",
+    kind: "project_closeout",
+    subjectType: "project",
+    context: { service: project.service, value: project.value, completed: completedMilestones.length, outstanding: incompleteMilestones.length, unpaid: unpaid.length },
+    orgId,
   });
 
   return draftFromStructuredResult({
@@ -874,11 +886,15 @@ ${openInvoices.map((i) => `- ${i.number}: $${(i.amount / 100).toFixed(2)}, due $
 
 Return JSON with subject, body (100-200 words, markdown), and reasoning.`;
 
-  const result = await callStructured({
+  const result = await withLearning<z.infer<typeof WeeklyClientDigestSchema>>({
     model: pickModel("summary"),
     system, user,
     schema: WeeklyClientDigestSchema,
     schemaName: "WeeklyClientDigest",
+    kind: "weekly_client_digest",
+    subjectType: "contact",
+    context: { activeProjectCount: contactProjects.length, openTicketCount: weekTickets.length, unpaidCount: openInvoices.length, totalHours: Array.from(timeByProject.values()).reduce((a, b) => a + b, 0) },
+    orgId,
   });
 
   return draftFromStructuredResult({
