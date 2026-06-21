@@ -292,3 +292,100 @@ After the deploy completes:
 The trust model said: "the next person to deploy should be able to
 ship in 30 minutes." This checklist is the realization of that.
 If a step is unclear, fix this file before you fix the code.
+
+---
+
+# Encryption key rotation
+
+When `ENCRYPTION_KEY` rotates (annually, or on suspected compromise), every encrypted column in the database needs to be re-encrypted with the new key. We have a one-shot script for this.
+
+## Setup (one-time)
+
+You need:
+- The **current** (old) `ENCRYPTION_KEY` value
+- The **new** `ENCRYPTION_KEY` value (32 bytes hex, generated freshly)
+- Access to the production database
+
+Generate a new key with:
+```bash
+openssl rand -hex 32
+```
+
+Store both keys in your password manager. Do **not** commit them.
+
+## Procedure
+
+**1. Dry-run first.** See what would change.
+
+```bash
+cd /home/uzer/o-company
+OLD_ENCRYPTION_KEY=<current-key> \
+NEW_ENCRYPTION_KEY=<new-key> \
+pnpm --filter @o/db migrate:rotate -- --dry-run
+```
+
+Expected output: a count of rows that would be re-encrypted, broken down by table. If the count is wildly different from what you expect (e.g., 0 rows when you know you have 1000 contacts), stop and investigate.
+
+**2. Take a database backup.** The rotation is recoverable but slow. A backup is faster.
+
+In Neon: branch the database, or use point-in-time recovery. Document the backup timestamp.
+
+**3. Apply the rotation.**
+
+```bash
+OLD_ENCRYPTION_KEY=<current-key> \
+NEW_ENCRYPTION_KEY=<new-key> \
+pnpm --filter @o/db migrate:rotate
+```
+
+The script walks every encrypted column in `people`, `contacts`, and `companies`. For each row:
+1. Decrypts with the OLD key
+2. Re-encrypts with the NEW key
+3. Round-trip verifies (decrypts with NEW key, compares to original plaintext)
+4. Writes the new ciphertext
+
+If the round-trip fails, the row is skipped and logged. The script exits non-zero if any row failed.
+
+**4. Verify a sample row.**
+
+Pick a known contact. Decrypt with the new key:
+```bash
+NEW_ENCRYPTION_KEY=<new-key> node -e '
+  require("dotenv").config();
+  const { decrypt } = require("@o/auth/encryption");
+  // pick a row from psql, paste the email ciphertext here
+  console.log(decrypt("PASTE_CIPHERTEXT_HERE"));
+'
+```
+
+If you get the original email back, the rotation worked for that row.
+
+**5. Update the production env var.**
+
+In Vercel: replace `ENCRYPTION_KEY` with the new value. Redeploy. The app now reads/writes with the new key.
+
+**6. Roll back if needed.**
+
+If something went wrong and you need to roll back:
+- Restore the database from the backup (the old ciphertext is still there)
+- Keep the old key in `ENCRYPTION_KEY` for now
+- Investigate the failure logs
+- Re-run the rotation
+
+The script does NOT delete the old key. The encryption helper is configured to use whatever `ENCRYPTION_KEY` is currently set. After a successful rotation, the old key is no longer needed and can be deleted from your password manager.
+
+## What this script doesn't do
+
+- **Multi-key rotation** (rolling from key-v1 to key-v2 to key-v3 over hours/days). The v1 is a single-shot rotation. A v2 supports a transition period where both keys are valid.
+- **Cross-table consistency.** If the rotation is interrupted mid-way, some tables are on the new key and some are on the old. The v1 handles this by re-running: pass the same old/new keys and run again. The script is idempotent — already-rotated rows are skipped (they no longer match the isEncrypted check on the OLD key format).
+- **Audit logging.** The script logs to the standard logger; rows that fail are recorded with the table/id/column/error. There's no audit_events row for the rotation itself. A v2 adds an audit entry for the operation.
+
+## Why this is in @o/db, not in the API
+
+The rotation is a database operation. The API is for serving requests; the operator-worker is for cron-style work. Database migrations are @o/db. The script uses `tsx` to run TypeScript directly, like the other migrate scripts.
+
+## When to rotate
+
+- **Annually.** Mark a calendar reminder. The annual rotation is a security best practice (limits the blast radius of a leaked key).
+- **On suspected compromise.** If the key is in a log, in a screenshot, in a chat, in a commit — rotate immediately.
+- **On personnel changes.** When someone with access to the key leaves the team, rotate.

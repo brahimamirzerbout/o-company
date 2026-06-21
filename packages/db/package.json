@@ -14,6 +14,7 @@
   "scripts": {
     "migrate": "tsx src/migrate.ts",
     "migrate:encrypt": "tsx src/migrate-encrypt.ts",
+    "migrate:rotate": "tsx src/migrate-rotate.ts",
     "seed": "tsx src/seed.ts",
     "reset": "tsx src/migrate.ts --reset",
     "typecheck": "tsc --noEmit"
@@ -24,6 +25,7 @@
     "@o/logger": "workspace:*",
     "drizzle-orm": "0.36.0",
     "drizzle-kit": "0.28.0",
+    "dotenv": "^16.4.5",
     "postgres": "3.4.4",
     "tsx": "4.19.2"
   },
