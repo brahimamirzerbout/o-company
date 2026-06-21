@@ -84,8 +84,45 @@ function computeCost(model: ModelName, promptTokens: number, completionTokens: n
 // Uses OpenAI's json_schema response format. The model is constrained to
 // produce JSON that matches the Zod schema. No parsing, no retries, no
 // "the model returned a slightly different shape" surprises.
+//
+// On validation failure: we retry up to MAX_STRUCTURED_RETRIES times
+// with increasing temperature. This is what the tutorial doesn't
+// show but is table-stakes: even with json_schema mode, the model
+// occasionally returns something the schema rejects. A retry with
+// higher temperature usually gets it right.
+
+const MAX_STRUCTURED_RETRIES = 3;
 
 export async function callStructured<T>(args: {
+  model: ModelName;
+  system: string;
+  user: string;
+  schema: z.ZodType<T>;
+  schemaName: string;
+  temperature?: number;
+}): Promise<{ value: T; promptTokens: number; completionTokens: number; costUsd: number; model: ModelName }> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < MAX_STRUCTURED_RETRIES; attempt++) {
+    try {
+      return await callStructuredOnce(args, attempt);
+    } catch (err) {
+      lastError = err;
+      const isValidation = err instanceof z.ZodError;
+      logger.warn("llm.structured.attempt_failed", {
+        attempt: attempt + 1,
+        max: MAX_STRUCTURED_RETRIES,
+        kind: isValidation ? "validation" : "other",
+        err: String(err),
+      });
+      // Bump the temperature on retry. The first attempt was probably
+      // too rigid; the next one should explore more.
+      args = { ...args, temperature: (args.temperature ?? 0.4) + 0.1 * (attempt + 1) };
+    }
+  }
+  throw lastError;
+}
+
+async function callStructuredOnce<T>(args: {
   model: ModelName;
   system: string;
   user: string;
