@@ -1,0 +1,12 @@
+{
+  "name": "@o/ios",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Native iOS client for o.company — the photo pipeline + brief inbox + operator review, on the go.",
+  "type": "module",
+  "scripts": {
+    "dev": "echo 'iOS apps are built with Xcode, not from this script. Open apps/ios/Noira.xcodeproj in Xcode 15+.'",
+    "build": "xcodebuild -project Noira.xcodeproj -scheme Noira -configuration Release -destination 'generic/platform=iOS' build",
+    "open": "open Noira.xcodeproj"
+  }
+}

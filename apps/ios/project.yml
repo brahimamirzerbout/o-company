@@ -1,0 +1,109 @@
+# =============================================================================
+# XcodeGen project specification
+# =============================================================================
+# This file defines the iOS app target. To generate the .xcodeproj:
+#
+#   1. Install xcodegen:  brew install xcodegen
+#   2. From this directory: xcodegen generate
+#   3. Open the resulting Noira.xcodeproj in Xcode 15+
+#   4. Build & run (⌘R)
+#
+# Why XcodeGen: the .pbxproj file is a 5000+ line monstrosity with stable
+# UUIDs for every file. Hand-writing it is error-prone. XcodeGen reads
+# this YAML and produces a clean, mergeable pbxproj that the whole team
+# can re-generate from source.
+
+name: Noira
+options:
+  bundleIdPrefix: com.o.company
+  deploymentTarget:
+    iOS: "17.0"
+  developmentLanguage: en
+  groupSortPosition: top
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    SWIFT_STRICT_CONCURRENCY: complete
+  configs:
+    Debug:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+    Release: {}
+
+targets:
+  Noira:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources/NoiraApp
+      - path: Sources/NoiraUI
+      - path: Sources/NoiraCore
+    resources:
+      - path: Resources
+        optional: true
+    info:
+      path: Sources/NoiraApp/Info.plist
+      properties:
+        CFBundleDisplayName: Noira
+        CFBundleShortVersionString: "1.0.0"
+        CFBundleVersion: "1"
+        UILaunchScreen:
+          UIColorName: ""
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSPhotoLibraryUsageDescription: "Noira needs access to your photo library to upload photos for AI-powered variations."
+        NSCameraUsageDescription: "Noira needs camera access if you want to take photos directly in the app."
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: false
+          NSAllowsLocalNetworking: true   # for the dev-mode API at localhost:4000
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.o.company.noira
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: NO
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    dependencies:
+      - package: NoiraPackage
+
+packages:
+  NoiraPackage:
+    path: .
+
+# Tests
+  NoiraTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests/NoiraCoreTests
+    dependencies:
+      - target: Noira
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.o.company.noira.tests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  Noira:
+    build:
+      targets:
+        Noira: all
+        NoiraTests: [test]
+    test:
+      targets:
+        - NoiraTests
+    run:
+      config: Debug
+    archive:
+      config: Release
