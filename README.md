@@ -117,10 +117,13 @@ The Master Services Agreement, Data Processing Addendum, and Acceptable Use Poli
 
 ## Deploying to production
 
-Read **[SETUP.md](./SETUP.md)** before your first deploy. It walks
-through every env var, every account you need, and the exact failure
-mode if you skip a step. The trust model assumes production is
-configured correctly; this file is the configuration checklist.
+Read **[DEPLOY.md](./DEPLOY.md)** for the full runbook: every
+account you need, every dashboard click, every env var, in
+the exact order to do them. Total: ~6-8 hours, mostly DNS.
+
+Read **[SETUP.md](./SETUP.md)** for the env-var reference and
+the failure-mode table. SETUP.md is the *what*; DEPLOY.md is
+the *how*.
 
 ## The operator
 

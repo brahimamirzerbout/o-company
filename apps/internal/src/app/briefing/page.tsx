@@ -309,6 +309,10 @@ function DraftCard({ draft, expanded, onToggle, onApprove, onReject, onEdit, onS
             <pre className="whitespace-pre-wrap font-sans text-sm text-cream leading-relaxed">{draft.body}</pre>
           </div>
 
+          {draft.channel === "email" && (
+            <EmailPreview id={draft.id} />
+          )}
+
           {draft.status === "pending" && (
             <div className="flex items-center justify-between pt-2">
               <div className="flex items-center gap-2">

@@ -1,8 +1,10 @@
-# o.company · production deploy checklist
+# o.company · env-var reference
 
-> The single source of truth for "what does it take to run o.company in
-> production." Read this before your first deploy. Use this every time
-> you onboard a new environment.
+> The single source of truth for "what env vars exist and what they do." Read this before your first deploy.
+
+For the **how** — the actual steps to deploy, in order, with dashboard
+clicks and timing estimates — read **[DEPLOY.md](./DEPLOY.md)**.
+This file is the *what*; DEPLOY.md is the *how*.
 
 This file exists because the previous attempt at documenting the
 deploy (the `.env.example` plus scattered README sections) was
