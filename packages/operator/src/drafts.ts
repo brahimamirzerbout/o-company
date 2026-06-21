@@ -136,6 +136,16 @@ export async function approveDraft(opts: ApproveOptions): Promise<Draft> {
     updatedAt: now,
   }).where(eq(operatorDrafts.id, opts.draftId));
 
+  // Record the decision in the learning loop. This is what makes the
+  // next similar draft better: the model sees this as a few-shot example.
+  await recordLearningDecision({
+    orgId: opts.orgId,
+    draft,
+    decision: opts.editedBody ? "edited" : "approved",
+    finalBody,
+    reason: opts.feedbackNote ?? null,
+  });
+
   return { ...draft, status: finalStatus, body: finalBody, editedBody: opts.editedBody ?? null, approvedAt: now, approvedBy: opts.approverId, updatedAt: now };
 }
 
@@ -155,7 +165,52 @@ export async function rejectDraft(opts: { orgId: string; draftId: string; approv
     feedbackNote: opts.reason,
     updatedAt: now,
   }).where(eq(operatorDrafts.id, opts.draftId));
+
+  // Record the rejection. The model will see this as "don't do what
+  // the original draft did" the next time a similar draft is made.
+  await recordLearningDecision({
+    orgId: opts.orgId,
+    draft,
+    decision: "rejected",
+    finalBody: draft.body,  // the rejected body — the model should learn to NOT do this
+    reason: opts.reason,
+  });
+
   return { ...draft, status: "rejected", feedbackScore: -1, feedbackNote: opts.reason, approvedAt: now, approvedBy: opts.approverId, updatedAt: now };
+}
+
+async function recordLearningDecision(args: {
+  orgId: string;
+  draft: Draft;
+  decision: "approved" | "rejected" | "edited";
+  finalBody: string;
+  reason: string | null;
+}): Promise<void> {
+  try {
+    const db = getDb();
+    const { operatorFeedback } = await import("@o/db/schema");
+    const { hashDraftContext } = await import("./learning");
+    const contextHash = hashDraftContext(args.draft.kind, args.draft.subjectType, args.draft.context);
+    await db.insert(operatorFeedback).values({
+      id: randomUUID(),
+      orgId: args.orgId,
+      draftId: args.draft.id,
+      kind: args.draft.kind,
+      decision: args.decision,
+      originalBody: args.draft.body,
+      finalBody: args.finalBody,
+      reason: args.reason,
+      // Store the context hash in the promptEmbedding field. It's not an
+      // embedding, but the column is the right shape for a "prompt
+      // similarity key" and we don't need a migration.
+      promptEmbedding: [contextHash.length, contextHash.split("").reduce((a, c) => a + c.charCodeAt(0), 0)] as unknown as number[] | null,
+      decidedAt: new Date(),
+    });
+  } catch (err) {
+    // Learning-loop failures are never fatal. The draft is approved
+    // either way. We just don't get the few-shot benefit next time.
+    logger.warn("learning.record_failed", { draftId: args.draft.id, err: String(err) });
+  }
 }
 
 // -----------------------------------------------------------------------------

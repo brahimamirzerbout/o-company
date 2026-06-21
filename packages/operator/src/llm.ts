@@ -100,6 +100,8 @@ export async function callStructured<T>(args: {
   schema: z.ZodType<T>;
   schemaName: string;
   temperature?: number;
+  /** Optional few-shot examples. When provided, appended to the user prompt. */
+  fewShotExamples?: Array<{ decision: string; originalBody: string; finalBody: string; reason: string | null }>;
 }): Promise<{ value: T; promptTokens: number; completionTokens: number; costUsd: number; model: ModelName }> {
   let lastError: unknown;
   for (let attempt = 0; attempt < MAX_STRUCTURED_RETRIES; attempt++) {
@@ -129,16 +131,26 @@ async function callStructuredOnce<T>(args: {
   schema: z.ZodType<T>;
   schemaName: string;
   temperature?: number;
+  fewShotExamples?: Array<{ decision: string; originalBody: string; finalBody: string; reason: string | null }>;
 }): Promise<{ value: T; promptTokens: number; completionTokens: number; costUsd: number; model: ModelName }> {
   const t0 = Date.now();
   const openai = getClient();
+
+  // Append few-shot examples to the user prompt if provided. The
+  // examples come from the learning loop: previous drafts the human
+  // approved, rejected, or edited. The model uses them as guidance
+  // for style and judgment, not as rules.
+  let userContent = args.user;
+  if (args.fewShotExamples && args.fewShotExamples.length > 0) {
+    userContent = args.user + formatFewShotBlock(args.fewShotExamples);
+  }
 
   const response = await openai.chat.completions.create({
     model: args.model,
     temperature: args.temperature ?? 0.4,
     messages: [
       { role: "system", content: args.system },
-      { role: "user", content: args.user },
+      { role: "user", content: userContent },
     ],
     response_format: {
       type: "json_schema",
@@ -172,9 +184,26 @@ async function callStructuredOnce<T>(args: {
     completionTokens,
     costUsd,
     durationMs: Date.now() - t0,
+    fewShotCount: args.fewShotExamples?.length ?? 0,
   });
 
   return { value: parsed, promptTokens, completionTokens, costUsd, model: args.model };
+}
+
+function formatFewShotBlock(examples: Array<{ decision: string; originalBody: string; finalBody: string; reason: string | null }>): string {
+  let out = "\n\nHere are some past decisions on similar drafts. Each shows the original draft and what the human did with it. Use these as guidance for style and judgment, not as rules.\n\n";
+  for (const ex of examples) {
+    out += `---\nDecision: ${ex.decision}\nOriginal draft:\n${ex.originalBody}\n`;
+    if (ex.finalBody !== ex.originalBody) {
+      out += `Final (after human edit):\n${ex.finalBody}\n`;
+    }
+    if (ex.reason) {
+      out += `Human's note: ${ex.reason}\n`;
+    }
+    out += "\n";
+  }
+  out += "---\n";
+  return out;
 }
 
 // -----------------------------------------------------------------------------

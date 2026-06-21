@@ -13,6 +13,41 @@
 
 import { z } from "zod";
 import { callStructured, callText, pickModel, MODELS, ModelName } from "./llm";
+import { findSimilarPastDecisions, type FewShotExample } from "./learning";
+
+/**
+ * Wraps a callStructured call with the learning loop. Looks up past
+ * decisions for the same (kind, subjectType) and includes the most
+ * recent 3 as few-shot examples in the prompt. The model uses them
+ * as guidance for style and judgment, not as rules.
+ *
+ * If the lookup fails (e.g. DB down, table doesn't exist yet), we
+ * fall through to the call without examples. Learning is a
+ * nice-to-have, not a must-have.
+ */
+async function withLearning<T>(args: Parameters<typeof callStructured<T>>[0] & {
+  kind: string;
+  subjectType: string;
+  context: Record<string, unknown>;
+  orgId: string;
+}): Promise<Awaited<ReturnType<typeof callStructured<T>>>> {
+  let fewShot: FewShotExample[] = [];
+  try {
+    fewShot = await findSimilarPastDecisions({
+      kind: args.kind,
+      subjectType: args.subjectType,
+      context: args.context,
+      orgId: args.orgId,
+      limit: 3,
+    });
+  } catch {
+    // Learning is optional; the call proceeds without examples.
+  }
+  return callStructured<T>({
+    ...args,
+    fewShotExamples: fewShot.length > 0 ? fewShot : undefined,
+  });
+}
 import {
   listStaleDeals, getContact, listOverdueInvoices, getPipelineSummary,
   getThisMonthRevenue, listReadyPhotoJobs, getRecentActivity,
@@ -170,11 +205,15 @@ ${JSON.stringify(recentActivities, null, 2)}
 
 Return JSON with subject, body (markdown), reasoning, and tone. The tone should be "gentle" if <7 days, "direct" if 7-14 days, "urgent" if 14+ days.`;
 
-  const result = await callStructured({
+  const result = await withLearning<z.infer<typeof DealFollowupSchema>>({
     model: pickModel("draft"),
     system, user,
     schema: DealFollowupSchema,
     schemaName: "DealFollowup",
+    kind: "deal_followup_draft",
+    subjectType: "deal",
+    context: { dealStage: deal.stage, daysSinceActivity, contactId: deal.contactId },
+    orgId,
   });
 
   return draftFromStructuredResult({
