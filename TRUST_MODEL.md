@@ -144,6 +144,107 @@ add it as a mode to this one. The contract here is
 draft-and-approve, and breaking the contract breaks the
 product.
 
+## Data safety and money
+
+The contract above is about the AI. There's a parallel
+contract about the data and the money, and it's stricter.
+
+### PCI scope: SAQ-A
+
+We use Stripe Hosted Checkout for all payment collection.
+This puts us in PCI DSS **SAQ-A** scope — the most minimal
+self-assessment tier. We never touch raw card data. The
+browser sends card details directly to Stripe; we receive
+only the tokenized PaymentIntent. Our webhook handler
+verifies signatures but does not read card fields.
+
+**Do not break this.** Adding a custom payment form, storing
+any card data on our servers, or logging full PaymentIntent
+objects jumps us to SAQ-D, which requires a full PCI audit.
+The Hosted Checkout pattern is intentional. Keep it.
+
+### Data at rest: column-level encryption
+
+Sensitive fields are encrypted with AES-256-GCM using the
+`ENCRYPTION_KEY` env var. The encryption helper is in
+`packages/auth/src/encryption.ts`. Currently encrypted:
+
+- `people.email`
+- `contacts.email`
+- `contacts.notes`
+
+The audit log is **not** encrypted. It must be readable for
+compliance. Audit log payloads that reference deleted users
+have the PII stripped (see "GDPR" below).
+
+**Rotation of the encryption key** is a separate, large
+procedure. Re-encrypting every encrypted field with a new
+key requires a batch job. Don't rotate the key without
+running the rotation job.
+
+### GDPR data subject rights
+
+Two endpoints implement GDPR Articles 17 and 20:
+
+- `DELETE /api/people/:id/gdpr-delete` — right to erasure.
+  Anonymizes the person's PII, marks them as deactivated,
+  cascades the anonymization to owned contacts, assigned
+  drafts, and audit log entries. The audit log rows are
+  preserved (required for compliance) with `actor_id` set to
+  NULL. Refuses to delete the only owner.
+- `GET /api/people/:id/export` — right to data portability.
+  Returns a JSON dump of everything associated with the
+  person. The user can download it. The dump excludes
+  password hash, 2FA secret, and other users' PII. The
+  audit log entries are reduced to "this event happened
+  on this date" without the payload.
+
+Both endpoints are owner-only. Data subject requests are
+processed by the data controller (the org), and the org's
+owner is the right person.
+
+### Stripe webhook signature verification
+
+The webhook handler in `apps/api/src/app/api/webhooks/stripe/route.ts`
+verifies every incoming request with
+`stripe.webhooks.constructEvent()`. A request with an invalid
+signature is rejected with 400 before any DB read or write.
+A request with a valid signature but unknown event ID is
+deduplicated against the audit_events table — the side
+effect runs exactly once per event.
+
+The webhook **does not** trust any field in the payload.
+The `invoiceId` comes from `pi.metadata.invoiceId` and is
+verified to exist in our DB. The amount is verified against
+the invoice. The currency is verified. The customer email
+is read from the invoice, not from the Stripe payload.
+
+### Audit log
+
+The `audit_events` table is append-only. Every external side
+effect — every email sent, every refund, every password
+reset — writes to it. The row is the source of truth. The
+handler is the recorder. The user-facing UI is the viewer.
+
+Audit log entries are never deleted. When a user requests
+erasure, the entry stays with the actor_id nulled. The
+payload may be redacted to remove other users' PII; the
+event type and timestamp remain.
+
+### Backups
+
+The audit log is only as good as the database it's in.
+Postgres backups are **not** included in this codebase. A
+production deployment must configure:
+
+- Automated daily snapshots (Neon: automatic on paid plans)
+- Point-in-time recovery for at least 7 days
+- A separate backup store (S3, R2) for the snapshot
+- A documented restore procedure
+
+Without backups, an audit log is "we know what happened
+until the database disappeared." That is not an audit log.
+
 ---
 
 Last updated: 2026-06-20. The contract is the contract. If

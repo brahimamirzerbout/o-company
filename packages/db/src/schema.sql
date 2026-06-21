@@ -684,3 +684,20 @@ CREATE UNIQUE INDEX payments_stripe_pi_unique
 -- cron job that flips sent→overdue is fast.
 CREATE INDEX invoices_status_due_date_idx ON invoices(status, due_date)
   WHERE status = 'sent';
+
+-- === NAME: 004_gdpr_and_pci ===
+
+-- GDPR right-to-erasure: people.deleted_at
+-- Tracks when a person was soft-deleted via the GDPR endpoint.
+-- Combined with status='deactivated', this is the source of truth
+-- for "this person exists in the audit log but is anonymized in
+-- the application tables."
+ALTER TABLE people ADD COLUMN deleted_at TIMESTAMPTZ;
+CREATE INDEX people_deleted_at_idx ON people(deleted_at) WHERE deleted_at IS NOT NULL;
+
+-- The contacts table already has owner_id. The GDPR endpoint
+-- nulls the owner_id on the contact when its owner is deleted.
+-- This is the cascade. The contact itself is not deleted (the
+-- contact is its own data subject).
+-- No schema change needed; the existing FK to people(id) becomes
+-- a soft reference after the null.

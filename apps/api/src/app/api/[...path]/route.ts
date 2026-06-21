@@ -54,6 +54,8 @@ const ID_TAIL: Record<string, { method: string; handler: keyof typeof routes }> 
   "PATCH /api/people":         { method: "PATCH",  handler: "PATCH_person" },
   "DELETE /api/people":        { method: "DELETE", handler: "DELETE_person" },
   "POST /api/people/role":     { method: "POST",   handler: "POST_role" },
+  "DELETE /api/people/:id/gdpr-delete": { method: "DELETE", handler: "DELETE_gdpr" },
+  "GET  /api/people/:id/export":     { method: "GET",    handler: "GET_export" },
   "GET  /api/companies":       { method: "GET",    handler: "GET_company" },
   "PATCH /api/companies":      { method: "PATCH",  handler: "PATCH_company" },
   "DELETE /api/companies":     { method: "DELETE", handler: "DELETE_company" },
