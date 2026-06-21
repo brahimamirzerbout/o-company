@@ -20,6 +20,7 @@ const NAV: NavItem[] = [
   { href: "/time",      label: "Time" },
   { href: "/tickets",   label: "Support" },
   { href: "/people",    label: "People" },
+  { href: "/audit",     label: "Audit log" },
   { href: "/settings",  label: "Settings" },
 ];
 

@@ -17,3 +17,5 @@ export { listOperatorDrafts, getOperatorDraft, approveOperatorDraft, rejectOpera
 export { getBrief, getUnread, markRead, archiveEntry, markAllRead, testFire } from "./brief";
 export { POST_checkout } from "./checkout";
 export { POST_refund, POST_portal } from "./payments";
+export { DELETE_gdpr, GET_export } from "./gdpr";
+export { GET_audit_log, GET_audit_event } from "./audit";
