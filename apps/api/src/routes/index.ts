@@ -24,3 +24,4 @@ export { GET_contact_timeline } from "./contact-timeline";
 export { GET_contact_timeline_stream, pushAuditEvent } from "./contact-timeline-stream";
 export { GET_deal_insights } from "./deal-insights";
 export { POST_contacts_bulk_update, POST_contacts_bulk_delete, POST_deals_bulk_update } from "./crm-bulk";
+export { GET_contacts_export_csv, GET_contacts_export_json, GET_deals_export_csv, GET_deals_export_json } from "./crm-export";
